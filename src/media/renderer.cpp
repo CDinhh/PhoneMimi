@@ -2907,6 +2907,7 @@ void Renderer::render_frame() {
                 texture_ = SDL_CreateTexture(sdl_renderer_,
                     SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING,
                     pending_frame_.width, pending_frame_.height);
+                if (texture_) SDL_SetTextureScaleMode(texture_, SDL_ScaleModeLinear);
                 tex_width_ = pending_frame_.width;
                 tex_height_ = pending_frame_.height;
                 std::cout << "[Renderer] Texture resized: " << tex_width_ << "x" << tex_height_
@@ -2982,6 +2983,7 @@ void Renderer::render_frame() {
             last_frame_h_ = pending_frame_.height;
             last_frame_stride_ = pending_frame_.stride;
             SDL_UpdateTexture(texture_, nullptr, pending_frame_.data, pending_frame_.stride);
+            ++video_frame_serial_;
             has_new_frame_ = false;
             ever_received_frame_ = true;
             // First frame after a device switch — clear the "waiting for
@@ -3009,7 +3011,7 @@ void Renderer::render_frame() {
         float sc = std::min(sx, sy);
         SDL_Rect dst = {(int)((win_w - tex_width_ * sc) / 2), (int)((win_h - tex_height_ * sc) / 2),
                         (int)(tex_width_ * sc), (int)(tex_height_ * sc)};
-        SDL_RenderCopy(sdl_renderer_, texture_, nullptr, &dst);
+        SDL_RenderCopy(sdl_renderer_, video_tex_for_(dst.w, dst.h), nullptr, &dst);
         close_btn_ = screenshot_btn_ = folder_btn_ = icon_btn_ = {};
         record_btn_ = {};
         resize_grip_ = {};
@@ -3172,12 +3174,12 @@ void Renderer::render_frame() {
                 SDL_Rect fit{vdst.x + (vdst.w - fit_w) / 2,
                              vdst.y + (vdst.h - fit_h) / 2,
                              fit_w, fit_h};
-                SDL_RenderCopy(sdl_renderer_, texture_, nullptr, &fit);
+                SDL_RenderCopy(sdl_renderer_, video_tex_for_(fit.w, fit.h), nullptr, &fit);
             } else {
-                SDL_RenderCopy(sdl_renderer_, texture_, nullptr, &vdst);
+                SDL_RenderCopy(sdl_renderer_, video_tex_for_(vdst.w, vdst.h), nullptr, &vdst);
             }
         } else {
-            SDL_RenderCopy(sdl_renderer_, texture_, nullptr, &vdst);
+            SDL_RenderCopy(sdl_renderer_, video_tex_for_(vdst.w, vdst.h), nullptr, &vdst);
         }
 
         // Optional "Waiting for screen updates from <name>" overlay shown
@@ -6816,6 +6818,51 @@ void Renderer::android_type_diff_(const std::string& target) {
         android_input_fn_(in);
     }
     android_ime_shown_ = target;
+}
+
+// The phone usually sends far more pixels than the window shows (1080 px
+// wide into ~450). One bilinear step that large skips source pixels and
+// thin text turns jagged, so the frame is first halved on the GPU (each
+// halving averages 2x2 pixels, like a mipmap) until it is within 1.6x of
+// the size it is drawn at. Levels are rebuilt once per new frame.
+SDL_Texture* Renderer::video_tex_for_(int dst_w, int dst_h) {
+    if (!texture_ || dst_w <= 0 || dst_h <= 0) return texture_;
+    int levels = 0;
+    for (int w = tex_width_, h = tex_height_;
+         levels < kVideoMips && w >= dst_w * 1.6f && h >= dst_h * 1.6f;
+         w /= 2, h /= 2)
+        ++levels;
+    if (levels == 0) return texture_;
+    if (video_mips_serial_ != video_frame_serial_) video_mips_built_ = 0;
+    SDL_Texture* src = texture_;
+    int sw = tex_width_, sh = tex_height_;
+    for (int i = 0; i < levels; ++i) {
+        int lw = std::max(1, sw / 2), lh = std::max(1, sh / 2);
+        if (!video_mips_[i] || video_mip_w_[i] != lw || video_mip_h_[i] != lh) {
+            if (video_mips_[i]) SDL_DestroyTexture(video_mips_[i]);
+            video_mips_[i] = SDL_CreateTexture(sdl_renderer_, SDL_PIXELFORMAT_RGBA32,
+                                               SDL_TEXTUREACCESS_TARGET, lw, lh);
+            video_mip_w_[i] = lw; video_mip_h_[i] = lh;
+            video_mips_built_ = std::min(video_mips_built_, i);
+            if (!video_mips_[i]) return src;   // no render targets: plain bilinear
+            SDL_SetTextureScaleMode(video_mips_[i], SDL_ScaleModeLinear);
+        }
+        if (i >= video_mips_built_) {
+            SDL_Texture* prev = SDL_GetRenderTarget(sdl_renderer_);
+            SDL_BlendMode bm = SDL_BLENDMODE_NONE;
+            SDL_GetTextureBlendMode(src, &bm);
+            SDL_SetTextureBlendMode(src, SDL_BLENDMODE_NONE);
+            SDL_SetRenderTarget(sdl_renderer_, video_mips_[i]);
+            SDL_RenderCopy(sdl_renderer_, src, nullptr, nullptr);
+            SDL_SetRenderTarget(sdl_renderer_, prev);
+            SDL_SetTextureBlendMode(src, bm);
+            video_mips_built_ = i + 1;
+        }
+        src = video_mips_[i];
+        sw = lw; sh = lh;
+    }
+    video_mips_serial_ = video_frame_serial_;
+    return src;
 }
 
 void Renderer::layout_side_buttons_() {

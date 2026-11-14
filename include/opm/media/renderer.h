@@ -368,6 +368,13 @@ private:
     SDL_Texture* ios_icon_tex_ = nullptr;
     int ios_icon_sz_ = 0;
     SDL_Texture* android_icon_tex_ = nullptr;
+    // Downscaled copies of the video frame (see video_tex_for_).
+    static constexpr int kVideoMips = 4;
+    SDL_Texture* video_mips_[kVideoMips] = {};
+    int video_mip_w_[kVideoMips] = {}, video_mip_h_[kVideoMips] = {};
+    int video_mips_built_ = 0;
+    uint64_t video_frame_serial_ = 0, video_mips_serial_ = ~0ull;
+    SDL_Texture* video_tex_for_(int dst_w, int dst_h);
     SDL_Texture* logo_tex_ = nullptr;   // penguin, decoded from the exe (RCDATA 210)
     int logo_w_ = 0, logo_h_ = 0;
     int android_icon_sz_ = 0;
