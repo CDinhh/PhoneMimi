@@ -712,6 +712,14 @@ void ScrcpyReceiver::send_text(const std::string& s) {
 
 void ScrcpyReceiver::send_clipboard(const std::string& s, bool paste) {
     if (!control_ready() || s.empty()) return;
+    if (paste) {
+        // The phone pastes asynchronously: changing the clipboard again
+        // before it has done so would paste the newer text twice.
+        using namespace std::chrono;
+        auto now = steady_clock::now();
+        if (now < next_paste_) std::this_thread::sleep_for(next_paste_ - now);
+        next_paste_ = steady_clock::now() + milliseconds(30);
+    }
     size_t n = utf8_prefix(s, 256 * 1024);
     std::vector<uint8_t> b(14 + n);
     b[0] = MSG_SET_CLIPBOARD;

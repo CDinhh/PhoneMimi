@@ -1938,6 +1938,13 @@ void Renderer::run() {
                             press_side_button_(pressed);
                             break;
                         }
+                        const BtnRect& pin = side_btn_hit_[7];
+                        if (pin.w > 0 && in_rect(mx, my, pin.x, pin.y, pin.w, pin.h)) {
+                            settings_.always_on_top = !settings_.always_on_top;
+                            SDL_SetWindowAlwaysOnTop(window_, settings_.always_on_top ? SDL_TRUE : SDL_FALSE);
+                            settings_.save();
+                            break;
+                        }
                     }
 
                     // Resize grips (check first, highest priority corners)
@@ -2267,6 +2274,10 @@ void Renderer::run() {
                             }
                             if (hit(settings_toggle_usb_btn_)) {
                                 settings_.android_auto_usb = !settings_.android_auto_usb;
+                                settings_.save();
+                            }
+                            if (hit(settings_toggle_paste_btn_)) {
+                                settings_.android_type_via_paste = !settings_.android_type_via_paste;
                                 settings_.save();
                             }
                             if (hit(settings_toggle_softkbd_btn_)) {
@@ -2658,8 +2669,7 @@ void Renderer::run() {
                         margin = std::max(4, new_phone_h / 40);
                         needed_w = new_phone_w + std::max(0, drawer_w - margin);
                     }
-                    if (phone_frame_.has_side_buttons() && !phone_frame_.side_buttons_horizontal())
-                        needed_w += side_btn_margin(new_phone_w) * 2;
+                    needed_w += side_btn_margin(std::min(new_phone_w, new_phone_h)) * 2;
                     SDL_SetWindowSize(window_, needed_w, new_phone_h);
                     if (resize_from_tl_) {
                         // Keep the bottom-right corner where it was.
@@ -2930,7 +2940,7 @@ void Renderer::render_frame() {
         mute_btn_ = {};
         resize_grip_ = {};
         resize_grip_tl_ = {};
-        for (int i = 0; i < 4; ++i) side_btn_[i] = side_btn_hit_[i] = {};
+        for (int i = 0; i < kSideBtnCount; ++i) side_btn_[i] = side_btn_hit_[i] = {};
         frame_dst_w_ = 0;
         SDL_RenderPresent(sdl_renderer_);
         return;
@@ -2999,10 +3009,10 @@ void Renderer::render_frame() {
     // height 1992) would otherwise be drawn at 1:1 inside a ~700 px window
     // and the bottom bezel would be clipped.
     int phone_region_h = std::max(1, win_h - webcam_drawer_h_applied_);
-    // Landscape phones have their buttons on the top and bottom edges:
+    // Buttons stick out of every edge (volume / power, drawer handles):
     // shrink the phone a little so they fit inside the window.
-    if (phone_frame_.has_side_buttons() && phone_frame_.side_buttons_horizontal())
-        phone_region_h = std::max(1, phone_region_h - side_btn_margin(phone_region_h) * 2);
+    phone_region_h = std::max(1, phone_region_h -
+        side_btn_margin(std::min(phone_region_h, (int)(phone_region_h * (float)fw / fh))) * 2);
     scale          = (float)phone_region_h / fh;
     frame_dst_w_   = (int)(fw * scale);
     frame_dst_h_   = (int)(fh * scale);
@@ -3031,8 +3041,7 @@ void Renderer::render_frame() {
     bool is_fullscreen =
         (SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0;
     // Strip on each side of the phone for the buttons that stick out.
-    int side_m = (phone_frame_.has_side_buttons() && !phone_frame_.side_buttons_horizontal())
-                     ? side_btn_margin(frame_dst_w_) : 0;
+    int side_m = side_btn_margin(std::min(frame_dst_w_, frame_dst_h_));
     int needed_w = frame_dst_w_ + log_panel_w + side_m * 2;
     int webcam_h_delta = webcam_drawer_h - webcam_drawer_h_applied_;
     int needed_h = win_h + webcam_h_delta;
@@ -3562,9 +3571,6 @@ void Renderer::render_frame() {
         int island_w = std::max(160, (int)(phone_eq_w * 0.80f));
         int island_x = svx_b + (svw_b - island_w) / 2;
         // Order on the island (right→left): close, folder, record, screenshot.
-        int ss_full_x = island_x + island_w - pad_full - btn_sz_full
-                       - 3 * (btn_sz_full + gap_full);
-        int ss_full_cx = ss_full_x + btn_sz_full / 2;
         int rec_full_x = island_x + island_w - pad_full - btn_sz_full
                         - 2 * (btn_sz_full + gap_full);
         int rec_full_cx = rec_full_x + btn_sz_full / 2;
@@ -3572,38 +3578,15 @@ void Renderer::render_frame() {
         // Mini button — sized to fit inside the top bezel with breathing room.
         int mini_sz = std::max(12, std::min(btn_sz_full * 2 / 3, bezel_top - 4));
         if (mini_sz < 12) mini_sz = 12;
-        int mini_x = ss_full_cx - mini_sz / 2;
         int mini_y = frame_dst_y_ + (bezel_top - mini_sz) / 2;
-        bezel_screenshot_btn_ = {mini_x, mini_y, mini_sz, mini_sz};
-
         int bmx, bmy;
         SDL_GetMouseState(&bmx, &bmy);
-        bool bhov = in_rect(bmx, bmy, mini_x, mini_y, mini_sz, mini_sz);
         auto now_b = std::chrono::steady_clock::now();
-        bool flashing_b = btn_flash_ &&
-            std::chrono::duration_cast<std::chrono::milliseconds>(
-                now_b - btn_flash_start_).count() < 200;
-        // Subtle background — reads as a button only on hover/flash.
-        uint8_t bg = flashing_b ? 200 : (bhov ? 70 : 40);
-        SDL_SetRenderDrawColor(sdl_renderer_, bg, bg, bg + 5, bhov || flashing_b ? 200 : 130);
-        fill_circle(sdl_renderer_, mini_x + mini_sz / 2,
-                    mini_y + mini_sz / 2, mini_sz / 2);
-        // White filled-dot glyph — matches the island screenshot button so
-        // the affordance reads identically whether the menu is up or down.
-        int cr = std::max(2, mini_sz / 4);
-        int ccx = mini_x + mini_sz / 2;
-        int ccy = mini_y + mini_sz / 2;
-        uint8_t ca = flashing_b ? 255 : (bhov ? 255 : 220);
-        SDL_SetRenderDrawColor(sdl_renderer_, 240, 240, 240, ca);
-        fill_circle(sdl_renderer_, ccx, ccy, cr);
 
-        if (bhov) {
-            bezel_hover_key = "bezel_ss";
-            bezel_hover_text = "Screenshot (Ctrl+S)";
-            bezel_hover_ax = ccx;
-            bezel_hover_ay = mini_y + mini_sz + 4;
-        }
-
+        // Screenshot and record live in the menu. The record dot only
+        // shows up here while recording (or counting down) so it can be
+        // stopped without opening the menu.
+        if (recorder_.is_recording() || record_countdown_ms_ > 0) {
         // Bezel record button — same horizontal position as the island
         // record button, same red filled-dot / square language.
         int rec_mini_x = rec_full_cx - mini_sz / 2;
@@ -3662,6 +3645,7 @@ void Renderer::render_frame() {
             }
             bezel_hover_ax = rrcx;
             bezel_hover_ay = rec_mini_y + mini_sz + 4;
+        }
         }
 
         // Bezel close button — same vertical/horizontal placement strategy
@@ -3774,73 +3758,6 @@ void Renderer::render_frame() {
     // first-run state). Draws below the toast pill when both are visible.
     draw_update_banner();
 
-    // Log / Statistics toggle bars — center right bezel. Both buttons
-    // share the same bar/chevron glyph; the pair is vertically centered
-    // as a group (not each bar individually) with a gap between them.
-    {
-        float scale = (float)frame_dst_w_ / phone_frame_.frame_width();
-        int bezel_right = frame_dst_w_ - (int)((phone_frame_.screen_x() + phone_frame_.screen_width()) * scale);
-        // Glyph size derived from the phone-equivalent reference width so
-        // the chevrons stay compact on tablet/desktop sources.
-        int dot_r = std::max(2, ui_ref_width() / 175);
-        int star_cx = frame_dst_x_ + frame_dst_w_ - bezel_right / 2;
-        int hit_sz = std::max(16, dot_r * 6);
-        int group_gap = hit_sz; // "some vertical space" between the two lines
-        int center_y = frame_dst_y_ + frame_dst_h_ / 2;
-        int log_cy   = center_y - (hit_sz + group_gap) / 2;
-        int stats_cy = center_y + (hit_sz + group_gap) / 2;
-
-        int smx, smy;
-        SDL_GetMouseState(&smx, &smy);
-
-        auto draw_bar_button = [&](int star_cy, bool is_open, const char* key,
-                                   const char* tooltip, BtnRect& out_rect) {
-            out_rect = {star_cx - hit_sz / 2, star_cy - hit_sz / 2, hit_sz, hit_sz};
-            bool hover = in_rect(smx, smy, out_rect.x, out_rect.y, out_rect.w, out_rect.h);
-            uint8_t la = (hover || is_open) ? 240 : 160;
-            SDL_SetRenderDrawColor(sdl_renderer_, 220, 220, 220, la);
-
-            // Toggle indicator — closed "|" and open ">" share the same
-            // vertical span. Chevron uses a thinner stroke so it does not
-            // read as bold next to the slim collapsed bar.
-            int g_sz   = std::max(8, dot_r * 6);
-            int g_half = g_sz / 2;
-            int t_bar  = std::max(1, dot_r);
-            int t_chev = std::max(1, dot_r - 1);
-            auto fill_rect_centered = [&](int cx, int cy, int w, int h) {
-                SDL_Rect r{cx - w / 2, cy - h / 2, w, h};
-                SDL_RenderFillRect(sdl_renderer_, &r);
-            };
-            auto draw_thick_seg = [&](int x1, int y1, int x2, int y2, int t) {
-                int half = t / 2;
-                for (int dx = -half; dx <= half; ++dx)
-                    for (int dy = -half; dy <= half; ++dy)
-                        SDL_RenderDrawLine(sdl_renderer_, x1 + dx, y1 + dy,
-                                                           x2 + dx, y2 + dy);
-            };
-            if (is_open) {
-                int h_reach = g_half / 2;
-                draw_thick_seg(star_cx - h_reach / 2, star_cy - g_half,
-                               star_cx + h_reach,    star_cy, t_chev);
-                draw_thick_seg(star_cx - h_reach / 2, star_cy + g_half,
-                               star_cx + h_reach,    star_cy, t_chev);
-            } else {
-                fill_rect_centered(star_cx, star_cy, t_bar, g_sz);
-            }
-            if (hover) {
-                bezel_hover_key = key;
-                bezel_hover_text = tooltip;
-                bezel_hover_ax = star_cx - dot_r * 6;
-                bezel_hover_ay = star_cy;
-            }
-        };
-
-        bool log_open   = log_panel_visible_ && drawer_mode_ == DrawerMode::Log   && log_panel_anim_ > 0.5f;
-        bool stats_open = log_panel_visible_ && drawer_mode_ == DrawerMode::Stats && log_panel_anim_ > 0.5f;
-        draw_bar_button(log_cy,   log_open,   "log",   "Show log (L)", log_btn_);
-        draw_bar_button(stats_cy, stats_open, "stats", "Show statistics (T)", stats_btn_);
-    }
-
     // Source picker — small dots in bottom bezel, one per connected device.
     // Each dot is drawn as a play triangle when the source is streaming
     // live, and as a pause icon (two bars) when the iOS client has signaled
@@ -3937,67 +3854,6 @@ void Renderer::render_frame() {
                     bezel_hover_ay = cy - dot_r - 4;
                 }
             }
-        }
-    }
-
-    // Webcam drawer toggle — bottom bezel, anchored to the horizontal
-    // CENTRE of the bezel (lines up with the top dynamic-island menu
-    // button). The source-picker dots are now anchored to the LEFT
-    // (just past the corner arc), so the two clusters never overlap.
-    // Reuses the menu-button glyph: horizontal bar ("-") closed, downward
-    // chevron ("v") open.
-    {
-        float scale = (float)frame_dst_w_ / phone_frame_.frame_width();
-        int bezel_bottom = frame_dst_h_ -
-            (int)((phone_frame_.screen_y() + phone_frame_.screen_height()) * scale);
-        int dot_r = std::max(2, ui_ref_width() / 175);
-
-        int wcam_cx = frame_dst_x_ + frame_dst_w_ / 2;
-        int wcam_cy = frame_dst_y_ + frame_dst_h_ - bezel_bottom / 2;
-        int hit_sz  = std::max(16, dot_r * 6);
-        webcam_btn_ = {wcam_cx - hit_sz / 2, wcam_cy - hit_sz / 2, hit_sz, hit_sz};
-
-        int wmx, wmy;
-        SDL_GetMouseState(&wmx, &wmy);
-        bool wcam_hover = in_rect(wmx, wmy, webcam_btn_.x, webcam_btn_.y,
-                                  webcam_btn_.w, webcam_btn_.h);
-        uint8_t wa = (wcam_hover || webcam_drawer_visible_) ? 240 : 160;
-        SDL_SetRenderDrawColor(sdl_renderer_, 220, 220, 220, wa);
-
-        int g_sz   = std::max(8, dot_r * 6);
-        int g_half = g_sz / 2;
-        int t_bar  = std::max(1, dot_r);
-        int t_chev = std::max(1, dot_r - 1);
-        auto fill_rect_centered = [&](int cx_, int cy_, int w, int h) {
-            SDL_Rect r{cx_ - w / 2, cy_ - h / 2, w, h};
-            SDL_RenderFillRect(sdl_renderer_, &r);
-        };
-        auto draw_thick_seg = [&](int x1, int y1, int x2, int y2, int t) {
-            int half = t / 2;
-            for (int dx = -half; dx <= half; ++dx)
-                for (int dy = -half; dy <= half; ++dy)
-                    SDL_RenderDrawLine(sdl_renderer_, x1 + dx, y1 + dy,
-                                                       x2 + dx, y2 + dy);
-        };
-        if (webcam_drawer_anim_ > 0.5f) {
-            // Open state — downward chevron "v" (same as menu button).
-            int v_drop = g_half / 2;
-            draw_thick_seg(wcam_cx - g_half, wcam_cy - v_drop / 2,
-                           wcam_cx,          wcam_cy + v_drop, t_chev);
-            draw_thick_seg(wcam_cx + g_half, wcam_cy - v_drop / 2,
-                           wcam_cx,          wcam_cy + v_drop, t_chev);
-        } else {
-            // Closed state — horizontal bar "-".
-            fill_rect_centered(wcam_cx, wcam_cy, g_sz, t_bar);
-        }
-        if (wcam_hover) {
-            bezel_hover_key  = "webcam";
-            bezel_hover_text = (webcam_drawer_visible_
-                                    ? "Hide webcam (W)"
-                                    : "Show webcam (W)") +
-                               std::string("\nRight-click: pick camera");
-            bezel_hover_ax = wcam_cx;
-            bezel_hover_ay = wcam_cy - dot_r - 4;
         }
     }
 
@@ -5662,7 +5518,7 @@ void Renderer::draw_settings_panel() {
     settings_tab_ = std::clamp(settings_tab_, 0, 3);
     const int tab = settings_tab_;
     const bool resize_on = settings_.screenshot_resize_enabled;
-    const int rows = tab == 0 ? 4 : tab == 1 ? 7 : tab == 2 ? (resize_on ? 7 : 5) : 2;
+    const int rows = tab == 0 ? 3 : tab == 1 ? 8 : tab == 2 ? (resize_on ? 7 : 5) : 2;
     int total_h = pad + title_h + gap + tabs_h + gap + rows * row_h
                 + (tab == 1 ? gap + note_h : 0) + pad;
 
@@ -5682,7 +5538,7 @@ void Renderer::draw_settings_panel() {
     settings_resize_minus_btn_ = settings_resize_plus_btn_ = {};
     settings_fmt_mp4_btn_ = settings_fmt_gif_btn_ = {};
     settings_toggle_usb_btn_ = settings_toggle_softkbd_btn_ = {};
-    settings_toggle_kbd_btn_ = settings_toggle_scroff_btn_ = {};
+    settings_toggle_kbd_btn_ = settings_toggle_scroff_btn_ = settings_toggle_paste_btn_ = {};
     for (auto& b : settings_seg_res_btns_) b = {};
     for (auto& b : settings_seg_fps_btns_) b = {};
     for (auto& b : settings_seg_ios_fps_btns_) b = {};
@@ -5834,12 +5690,12 @@ void Renderer::draw_settings_panel() {
             fill_circle(sdl_renderer_, scx, scy, d / 2 - (selected ? 2 : 1));
             settings_swatch_btns_.push_back({i, BtnRect{scx - d / 2, scy - d / 2, d, d}});
         }
-        settings_toggle_aot_btn_      = toggle("Always on top", settings_.always_on_top);
         settings_toggle_compname_btn_ = toggle("Show computer name (after restart)", settings_.use_computer_name);
         settings_toggle_log_btn_      = toggle("Save a log file this session", log_to_file_session_);
     } else if (tab == 1) {
         settings_toggle_usb_btn_     = toggle("Connect USB phones automatically", settings_.android_auto_usb);
         settings_toggle_kbd_btn_     = toggle("Type on the phone from this keyboard", settings_.android_keyboard_on);
+        settings_toggle_paste_btn_   = toggle("Paste typed text (Vietnamese keyboards)", settings_.android_type_via_paste);
         settings_toggle_softkbd_btn_ = toggle("Hide the phone's own keyboard", settings_.android_hide_soft_keyboard);
         settings_toggle_scroff_btn_  = toggle("Turn the phone screen off", settings_.android_screen_off);
         static const char* const res_opts[3] = {"Max", "1920", "1280"};
@@ -6784,66 +6640,115 @@ void Renderer::android_type_diff_(const std::string& target) {
     if (common < target.size()) {
         AndroidInput in;
         in.text = target.substr(common);
-        // scrcpy's text injection only handles ASCII; accented text is
-        // pasted instead.
-        // shortcut: overwrites the phone clipboard, switch to a UHID
-        // keyboard if that ever matters.
+        // Injected key events pass through the phone's own keyboard app,
+        // and Vietnamese ones (Laban Key, ...) hold the letters back until
+        // the word is finished. Pasting bypasses it, and is the only way
+        // to send accented characters anyway.
+        // shortcut: overwrites the phone clipboard on every keystroke.
         bool ascii = true;
         for (unsigned char c : in.text) if (c >= 0x80) { ascii = false; break; }
-        in.kind = ascii ? AndroidInput::Kind::Text : AndroidInput::Kind::Clipboard;
+        in.kind = (ascii && !settings_.android_type_via_paste) ? AndroidInput::Kind::Text
+                                                              : AndroidInput::Kind::Clipboard;
         android_input_fn_(in);
     }
     android_ime_shown_ = target;
 }
 
 void Renderer::layout_side_buttons_() {
-    for (int i = 0; i < 4; ++i) side_btn_[i] = side_btn_hit_[i] = {};
-    if (!phone_frame_.has_side_buttons() || frame_dst_w_ <= 0) return;
+    for (int i = 0; i < kSideBtnCount; ++i) {
+        side_btn_[i] = side_btn_hit_[i] = {};
+        side_btn_edge_[i] = 0;
+    }
+    log_btn_ = stats_btn_ = webcam_btn_ = {};
+    if (frame_dst_w_ <= 0 || phone_frame_.frame_width() <= 0) return;
 
-    const bool horizontal = phone_frame_.side_buttons_horizontal();
-    float scale = (float)frame_dst_w_ / phone_frame_.frame_width();
+    const float scale = (float)frame_dst_w_ / phone_frame_.frame_width();
+    const int fx = frame_dst_x_, fy = frame_dst_y_, fw = frame_dst_w_, fh = frame_dst_h_;
     // m: how far a button sticks out. tuck: how far it reaches under the
     // chassis, so only its outer corners look rounded.
-    int m = side_btn_margin(horizontal ? frame_dst_h_ : frame_dst_w_);
-    int tuck = std::max(2, m / 2);
-    // In portrait the click target reaches into the (empty) side bezel,
-    // because the visible part is only a few pixels thick. Not in landscape:
-    // the top and bottom bezels hold the menu button and the source dots.
-    int grab = horizontal ? 0 : std::max(4, (int)(phone_frame_.bezel_left() * scale));
-    // far_edge: right edge in portrait, bottom edge in landscape.
-    auto place = [&](int i, PhoneFrame::SideButton sb, bool far_edge) {
-        int along = (int)std::round(sb.y * scale);
-        int len   = std::max(6, (int)std::round(sb.h * scale));
-        if (horizontal) {
-            int x = frame_dst_x_ + along;
-            int y = far_edge ? frame_dst_y_ + frame_dst_h_ - tuck : frame_dst_y_ - m;
-            side_btn_[i]     = {x, y, len, m + tuck};
-            side_btn_hit_[i] = {x, far_edge ? y - grab : y, len, m + tuck + grab};
-        } else {
-            int y = frame_dst_y_ + along;
-            int x = far_edge ? frame_dst_x_ + frame_dst_w_ - tuck : frame_dst_x_ - m;
-            side_btn_[i]     = {x, y, m + tuck, len};
-            side_btn_hit_[i] = {far_edge ? x - grab : x, y, m + tuck + grab, len};
+    const int m = side_btn_margin(std::min(fw, fh));
+    const int tuck = std::max(2, m / 2);
+
+    // A button sticking out of `edge` (0 left, 1 right, 2 top, 3 bottom),
+    // `len` pixels long starting at `start` along that edge. `grab` is how
+    // far its click target reaches into the bezel.
+    auto place = [&](int i, int edge, int start, int len, int grab) {
+        BtnRect r, h;
+        switch (edge) {
+            case 0:  r = {fx - m, start, m + tuck, len};
+                     h = {r.x, start, m + tuck + grab, len}; break;
+            case 1:  r = {fx + fw - tuck, start, m + tuck, len};
+                     h = {r.x - grab, start, m + tuck + grab, len}; break;
+            case 2:  r = {start, fy - m, len, m + tuck};
+                     h = {start, r.y, len, m + tuck + grab}; break;
+            default: r = {start, fy + fh - tuck, len, m + tuck};
+                     h = {start, r.y - grab, len, m + tuck + grab}; break;
         }
-        side_btn_far_[i] = far_edge;
+        side_btn_[i] = r;
+        side_btn_hit_[i] = h;
+        side_btn_edge_[i] = edge;
     };
-    if (horizontal) {
-        // Phone turned with its top to the left: volume along the bottom
-        // edge, power along the top. The webcam drawer hangs off the bottom.
-        if (webcam_drawer_anim_ <= 0.01f) {
-            place(0, phone_frame_.side_action(), true);
-            place(1, phone_frame_.side_volume_up(), true);
-            place(2, phone_frame_.side_volume_down(), true);
+    // The same button sitting inside the bezel, centred on (cx, cy): used
+    // while a drawer covers the edge it normally sticks out of.
+    auto place_inside = [&](int i, int edge, int cx, int cy, int len, int thick) {
+        BtnRect r = (edge <= 1) ? BtnRect{cx - thick / 2, cy - len / 2, thick, len}
+                                : BtnRect{cx - len / 2, cy - thick / 2, len, thick};
+        int grow = std::max(4, thick);
+        side_btn_[i] = r;
+        side_btn_hit_[i] = {r.x - grow, r.y - grow, r.w + grow * 2, r.h + grow * 2};
+        side_btn_edge_[i] = edge;
+    };
+
+    const bool log_edge_free    = log_panel_anim_ <= 0.01f;     // right edge
+    const bool webcam_edge_free = webcam_drawer_anim_ <= 0.01f; // bottom edge
+    const int bezel_r = std::max(4, fw - (int)((phone_frame_.screen_x() + phone_frame_.screen_width()) * scale));
+    const int bezel_t = std::max(4, (int)(phone_frame_.screen_y() * scale));
+
+    // The phone's own buttons.
+    if (phone_frame_.has_side_buttons()) {
+        const bool horizontal = phone_frame_.side_buttons_horizontal();
+        // In portrait the click target reaches into the (empty) side bezel,
+        // because the visible part is only a few pixels thick. Not in
+        // landscape: the top and bottom bezels hold other controls.
+        const int grab = horizontal ? 0 : std::max(4, (int)(phone_frame_.bezel_left() * scale));
+        // Portrait: volume on the left, power on the right. Landscape (top
+        // of the phone to the left): volume along the bottom, power on top.
+        auto phys = [&](int i, PhoneFrame::SideButton sb, bool volume_side) {
+            int along = (int)std::round(sb.y * scale);
+            int len   = std::max(6, (int)std::round(sb.h * scale));
+            if (horizontal) place(i, volume_side ? 3 : 2, fx + along, len, grab);
+            else            place(i, volume_side ? 0 : 1, fy + along, len, grab);
+        };
+        if (!horizontal || webcam_edge_free) {
+            phys(0, phone_frame_.side_action(), true);
+            phys(1, phone_frame_.side_volume_up(), true);
+            phys(2, phone_frame_.side_volume_down(), true);
         }
-        place(3, phone_frame_.side_power(), false);
-    } else {
-        place(0, phone_frame_.side_action(), false);
-        place(1, phone_frame_.side_volume_up(), false);
-        place(2, phone_frame_.side_volume_down(), false);
-        // The log drawer opens flush against the right edge, where the
-        // power button is.
-        if (log_panel_anim_ <= 0.01f) place(3, phone_frame_.side_power(), true);
+        if (horizontal || log_edge_free) phys(3, phone_frame_.side_power(), false);
     }
+
+    // Drawer handles (log, statistics, webcam): stacked half-way down the
+    // right edge, below the power button.
+    {
+        const int len = std::max(14, fh / 26);
+        const int gap = len * 3 / 4;
+        int y = fy + fh / 2 - (len * 3 + gap * 2) / 2;
+        for (int i = 4; i <= 6; ++i, y += len + gap) {
+            if (log_edge_free) place(i, 1, y, len, bezel_r);
+            else place_inside(i, 1, fx + fw - bezel_r / 2, y + len / 2, len, std::max(3, bezel_r / 3));
+        }
+    }
+
+    // Always-on-top pin: top edge, just past the top-left corner curve.
+    {
+        const int corner = (int)(phone_frame_.corner_radius() * scale);
+        const int len = std::max(18, fw / 10);
+        place(7, 2, fx + std::max(corner + 2, fw * 14 / 100), len, bezel_t / 2);
+    }
+
+    log_btn_    = side_btn_hit_[4];
+    stats_btn_  = side_btn_hit_[5];
+    webcam_btn_ = side_btn_hit_[6];
 }
 
 void Renderer::draw_side_buttons_(std::string& hover_key, std::string& hover_text,
@@ -6851,30 +6756,41 @@ void Renderer::draw_side_buttons_(std::string& hover_key, std::string& hover_tex
     uint8_t br, bg, bb;
     phone_frame_.button_color(&br, &bg, &bb);
     const bool android = android_input_active_();
-    const bool horizontal = phone_frame_.side_buttons_horizontal();
     static const char* const android_tips[4] = {"Mute", "Volume up", "Volume down", "Power"};
     static const char* const other_tips[4] = {
         "Mute PC audio", "Volume: use the phone", "Volume: use the phone", "Power: use the phone"};
+    const bool drawer_open = log_panel_visible_ && log_panel_anim_ > 0.5f;
+    const bool active[kSideBtnCount] = {
+        false, false, false, false,
+        drawer_open && drawer_mode_ == DrawerMode::Log,
+        drawer_open && drawer_mode_ == DrawerMode::Stats,
+        webcam_drawer_visible_,
+        settings_.always_on_top,
+    };
 
     int mx, my;
     SDL_GetMouseState(&mx, &my);
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < kSideBtnCount; ++i) {
         const BtnRect& b = side_btn_[i];
         if (b.w <= 0) continue;
         const BtnRect& hit = side_btn_hit_[i];
-        const bool far_edge = side_btn_far_[i];
+        const int edge = side_btn_edge_[i];
+        const bool along_x = edge >= 2;              // lies along the top / bottom edge
+        const bool far_edge = (edge == 1 || edge == 3);
         const bool hover = in_rect(mx, my, hit.x, hit.y, hit.w, hit.h);
         auto shade = [&](uint8_t c, int d) { return (uint8_t)std::min(255, std::max(0, c + d)); };
-        const int lift = hover ? 45 : 0;
-        const int thick = horizontal ? b.h : b.w;
-        const int rad = std::max(1, thick / 3);
+        const int lift = hover ? 45 : (active[i] ? 30 : 0);
+        const int rad = std::max(1, (along_x ? b.h : b.w) / 3);
 
-        SDL_SetRenderDrawColor(sdl_renderer_, shade(br, lift), shade(bg, lift), shade(bb, lift), 255);
+        // Body. The pin turns green while the window is kept on top.
+        uint8_t r = br, g = bg, bl = bb;
+        if (i == 7 && active[i]) { r = 52; g = 199; bl = 112; }
+        SDL_SetRenderDrawColor(sdl_renderer_, shade(r, lift), shade(g, lift), shade(bl, lift), 255);
         fill_round_rect(sdl_renderer_, b.x, b.y, b.w, b.h, rad);
         // Thin highlight on the outer face for a machined-metal look.
-        SDL_SetRenderDrawColor(sdl_renderer_, shade(br, lift + 30), shade(bg, lift + 30),
-                               shade(bb, lift + 32), 255);
-        if (horizontal) {
+        SDL_SetRenderDrawColor(sdl_renderer_, shade(r, lift + 30), shade(g, lift + 30),
+                               shade(bl, lift + 32), 255);
+        if (along_x) {
             int edge_y = far_edge ? b.y + b.h - 1 : b.y;
             SDL_RenderDrawLine(sdl_renderer_, b.x + rad, edge_y, b.x + b.w - 1 - rad, edge_y);
         } else {
@@ -6883,14 +6799,28 @@ void Renderer::draw_side_buttons_(std::string& hover_key, std::string& hover_tex
         }
 
         if (hover) {
-            hover_key  = std::string("side") + (char)('0' + i);
-            hover_text = android ? android_tips[i] : other_tips[i];
-            if (horizontal) {
-                hover_ax = b.x + b.w / 2;
-                hover_ay = far_edge ? hit.y : hit.y + hit.h;
-            } else {
-                hover_ax = far_edge ? hit.x : hit.x + hit.w;
-                hover_ay = b.y + b.h / 2;
+            switch (i) {
+                case 4: hover_key = "log";   hover_text = "Show log (L)"; break;
+                case 5: hover_key = "stats"; hover_text = "Show statistics (T)"; break;
+                case 6:
+                    hover_key = "webcam";
+                    hover_text = std::string(webcam_drawer_visible_ ? "Hide webcam (W)" : "Show webcam (W)") +
+                                 "\nRight-click: pick camera";
+                    break;
+                case 7:
+                    hover_key = "pin";
+                    hover_text = settings_.always_on_top ? "Always on top: on" : "Always on top: off";
+                    break;
+                default:
+                    hover_key  = std::string("side") + (char)('0' + i);
+                    hover_text = android ? android_tips[i] : other_tips[i];
+                    break;
+            }
+            switch (edge) {
+                case 0:  hover_ax = hit.x + hit.w;      hover_ay = b.y + b.h / 2; break;
+                case 1:  hover_ax = hit.x;              hover_ay = b.y + b.h / 2; break;
+                case 2:  hover_ax = b.x + b.w / 2;      hover_ay = hit.y + hit.h; break;
+                default: hover_ax = b.x + b.w / 2;      hover_ay = hit.y; break;
             }
         }
     }

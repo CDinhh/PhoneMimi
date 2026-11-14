@@ -253,11 +253,14 @@ private:
     bool resize_from_tl_ = false;    // dragging the top-left grip
     int resize_win_x_ = 0, resize_win_y_ = 0, resize_win_w_ = 0, resize_win_h_ = 0;
 
-    // Physical buttons sticking out of the frame:
-    // 0 action/mute, 1 volume up, 2 volume down (left side), 3 power (right).
-    BtnRect side_btn_[4];            // drawn rect (window coords): sticks out + tucks under the body
-    bool side_btn_far_[4] = {};      // on the right (portrait) / bottom (landscape) edge
-    BtnRect side_btn_hit_[4];        // click target (reaches into the bezel)
+    // Buttons sticking out of the frame:
+    // 0 action/mute, 1 volume up, 2 volume down, 3 power (the phone's own
+    // buttons), 4 log drawer, 5 statistics drawer, 6 webcam drawer,
+    // 7 always-on-top pin.
+    static constexpr int kSideBtnCount = 8;
+    BtnRect side_btn_[kSideBtnCount];       // drawn rect (window coords): sticks out + tucks under the body
+    int side_btn_edge_[kSideBtnCount] = {}; // 0 left, 1 right, 2 top, 3 bottom
+    BtnRect side_btn_hit_[kSideBtnCount];   // click target (reaches into the bezel)
     void layout_side_buttons_();
     void draw_side_buttons_(std::string& hover_key, std::string& hover_text,
                             int& hover_ax, int& hover_ay);
@@ -458,6 +461,7 @@ private:
     BtnRect settings_toggle_usb_btn_;
     BtnRect settings_toggle_softkbd_btn_;
     BtnRect settings_toggle_kbd_btn_;
+    BtnRect settings_toggle_paste_btn_;
     BtnRect settings_toggle_scroff_btn_;
     BtnRect settings_seg_res_btns_[3];
     BtnRect settings_seg_fps_btns_[3];

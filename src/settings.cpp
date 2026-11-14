@@ -88,6 +88,7 @@ Settings Settings::load() {
             else if (k == "screenshot_save_original_too") s.screenshot_save_original_too = (v == "1" || v == "true");
             else if (k == "use_computer_name")            s.use_computer_name            = (v == "1" || v == "true");
             else if (k == "android_hide_soft_keyboard")   s.android_hide_soft_keyboard   = (v == "1" || v == "true");
+            else if (k == "android_type_via_paste")       s.android_type_via_paste       = (v == "1" || v == "true");
             else if (k == "android_keyboard_on")          s.android_keyboard_on          = (v == "1" || v == "true");
             else if (k == "android_screen_off")           s.android_screen_off           = (v == "1" || v == "true");
             else if (k == "android_auto_usb")             s.android_auto_usb             = (v == "1" || v == "true");
@@ -124,6 +125,7 @@ bool Settings::save() const {
     f << "screenshot_save_original_too=" << (screenshot_save_original_too ? "1" : "0") << "\n";
     f << "use_computer_name="           << (use_computer_name           ? "1" : "0") << "\n";
     f << "android_hide_soft_keyboard="  << (android_hide_soft_keyboard  ? "1" : "0") << "\n";
+    f << "android_type_via_paste="      << (android_type_via_paste      ? "1" : "0") << "\n";
     f << "android_keyboard_on="         << (android_keyboard_on         ? "1" : "0") << "\n";
     f << "android_screen_off="          << (android_screen_off          ? "1" : "0") << "\n";
     f << "android_auto_usb="            << (android_auto_usb            ? "1" : "0") << "\n";

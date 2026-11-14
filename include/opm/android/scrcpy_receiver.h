@@ -159,6 +159,7 @@ public:
 private:
     bool send_ctrl_(const uint8_t* data, size_t n);
     void attach_virtual_keyboard_();
+    std::chrono::steady_clock::time_point next_paste_{};
     void worker_();
 
     Config cfg_;

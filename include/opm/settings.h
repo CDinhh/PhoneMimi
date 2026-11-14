@@ -62,6 +62,10 @@ struct Settings {
     // (same as pressing Ctrl+K).
     bool android_keyboard_on = false;
 
+    // Send typed text by pasting it instead of as key presses. Key presses
+    // go through the phone's keyboard app, which may buffer whole words.
+    bool android_type_via_paste = true;
+
     // Switch the phone's own display off while it is mirrored (Ctrl+O).
     bool android_screen_off = false;
 
