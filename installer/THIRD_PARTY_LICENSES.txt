@@ -20,6 +20,14 @@ stb_image / stb_image_write
     License: Public Domain (or MIT)
     Source : https://github.com/nothings/stb
 
+Lucide icons (font, lucide-static 0.469.0)
+    License: ISC
+    Source : https://lucide.dev/
+
+Plus Jakarta Sans (font, 2.7.1)
+    License: SIL Open Font License 1.1
+    Source : https://github.com/tokotype/PlusJakartaSans
+
 Apple Bonjour (dnssd) — used only at runtime if installed by the user.
     License: Apple Public Source License
     Source : https://opensource.apple.com/

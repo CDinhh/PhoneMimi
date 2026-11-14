@@ -197,17 +197,65 @@ static void remove_renderer_window_subclass(SDL_Window* window) {
 // ---------------------------------------------------------------------------
 #ifdef _WIN32
 
+// Fonts embedded in the exe (resources/phonemimi.rc), registered privately
+// for this process at startup. Plus Jakarta Sans ships one family name per
+// weight (nameID 1), so the face is picked by weight; Lucide is the icon font.
+static bool g_jakarta_ok = false;
+static bool g_lucide_ok = false;
+
+static bool load_rcdata(int id, const void** data, DWORD* size) {
+    HMODULE mod = GetModuleHandleW(nullptr);
+    HRSRC res = FindResourceW(mod, MAKEINTRESOURCEW(id), MAKEINTRESOURCEW(10)); // RT_RCDATA
+    if (!res) return false;
+    HGLOBAL h = LoadResource(mod, res);
+    if (!h) return false;
+    *data = LockResource(h);
+    *size = SizeofResource(mod, res);
+    return *data && *size > 0;
+}
+
+static int load_embedded_fonts() {
+    static const int ids[] = {201, 202, 203, 204, 205};
+    int ok = 0;
+    for (int id : ids) {
+        const void* data = nullptr; DWORD size = 0; DWORD n = 0;
+        if (load_rcdata(id, &data, &size) &&
+            AddFontMemResourceEx(const_cast<void*>(data), size, nullptr, &n) && n > 0) {
+            ++ok;
+            if (id == 201) g_lucide_ok = true;
+        }
+    }
+    g_jakarta_ok = ok - (g_lucide_ok ? 1 : 0) == 4;
+    std::cout << "[Renderer] Embedded fonts: " << ok << "/5
+";
+    return ok;
+}
+
+// UI font for `weight` (FW_* value). `face` overrides the family (icon
+// fonts, "Segoe UI Symbol", ...).
+static HFONT make_ui_font(int font_height, int weight, const wchar_t* face = nullptr) {
+    const wchar_t* fam = face;
+    int w = weight;
+    if (!fam && g_jakarta_ok) {
+        if (weight >= 800)      { fam = L"Plus Jakarta Sans ExtraBold"; w = FW_NORMAL; }
+        else if (weight >= 700) { fam = L"Plus Jakarta Sans";           w = FW_BOLD; }
+        else if (weight >= 600) { fam = L"Plus Jakarta Sans SemiBold";  w = FW_NORMAL; }
+        else                    { fam = L"Plus Jakarta Sans Medium";    w = FW_NORMAL; }
+    }
+    if (!fam) fam = L"Segoe UI";
+    return CreateFontW(-font_height, 0, 0, 0, w, FALSE, FALSE, FALSE,
+                       DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
+                       CLEARTYPE_NATURAL_QUALITY, DEFAULT_PITCH | FF_SWISS, fam);
+}
+
 // Measure-only helper used by word-wrap layout. Returns the same width
 // that make_text_texture would produce (advance width + overhang +
 // right-padding) without going through SDL.
-static int measure_text_w(const std::string& text, int font_height) {
+static int measure_text_w(const std::string& text, int font_height, int weight = 500) {
     if (text.empty()) return 0;
     HDC hdc = CreateCompatibleDC(nullptr);
     if (!hdc) return 0;
-    HFONT font = CreateFontA(
-        -font_height, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
-        CLEARTYPE_NATURAL_QUALITY, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
+    HFONT font = make_ui_font(font_height, weight);
     HFONT old_font = (HFONT)SelectObject(hdc, font);
     SIZE sz = {0, 0};
     GetTextExtentPoint32A(hdc, text.c_str(), (int)text.size(), &sz);
@@ -222,15 +270,12 @@ static int measure_text_w(const std::string& text, int font_height) {
 // ANSI version
 static SDL_Texture* make_text_texture(SDL_Renderer* renderer, const std::string& text,
                                        int font_height, uint8_t cr, uint8_t cg, uint8_t cb,
-                                       int* out_w, int* out_h) {
+                                       int* out_w, int* out_h, int weight = 500) {
     if (text.empty()) return nullptr;
     HDC hdc = CreateCompatibleDC(nullptr);
     if (!hdc) return nullptr;
 
-    HFONT font = CreateFontA(
-        -font_height, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
-        CLEARTYPE_NATURAL_QUALITY, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
+    HFONT font = make_ui_font(font_height, weight);
     HFONT old_font = (HFONT)SelectObject(hdc, font);
 
     SIZE sz;
@@ -300,19 +345,16 @@ static SDL_Texture* make_text_texture(SDL_Renderer* renderer, const std::string&
 }
 
 // Wide/Unicode version (for ♫, ©, etc.). Optional font_name lets
-// callers pick e.g. "Segoe UI Symbol" for glyphs missing from "Segoe UI".
+// callers pick e.g. "Segoe UI Symbol"; nullptr = the UI font.
 static SDL_Texture* make_text_texture_w(SDL_Renderer* renderer, const std::wstring& text,
                                           int font_height, uint8_t cr, uint8_t cg, uint8_t cb,
                                           int* out_w, int* out_h,
-                                          const wchar_t* font_name = L"Segoe UI") {
+                                          const wchar_t* font_name = nullptr, int weight = 500) {
     if (text.empty()) return nullptr;
     HDC hdc = CreateCompatibleDC(nullptr);
     if (!hdc) return nullptr;
 
-    HFONT font = CreateFontW(
-        -font_height, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
-        CLEARTYPE_NATURAL_QUALITY, DEFAULT_PITCH | FF_SWISS, font_name);
+    HFONT font = make_ui_font(font_height, weight, font_name);
     HFONT old_font = (HFONT)SelectObject(hdc, font);
 
     SIZE sz;
@@ -391,15 +433,12 @@ static SDL_Texture* make_text_texture_w_wrapped(SDL_Renderer* renderer,
                                                 uint8_t cr, uint8_t cg, uint8_t cb,
                                                 int max_pixel_width,
                                                 int* out_w, int* out_h,
-                                                const wchar_t* font_name = L"Segoe UI") {
+                                                const wchar_t* font_name = nullptr, int weight = 500) {
     if (text.empty() || max_pixel_width <= 0) return nullptr;
     HDC hdc = CreateCompatibleDC(nullptr);
     if (!hdc) return nullptr;
 
-    HFONT font = CreateFontW(
-        -font_height, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
-        CLEARTYPE_NATURAL_QUALITY, DEFAULT_PITCH | FF_SWISS, font_name);
+    HFONT font = make_ui_font(font_height, weight, font_name);
     HFONT old_font = (HFONT)SelectObject(hdc, font);
 
     // CALCRECT lays out wrapped text and returns the bounding box of the
@@ -482,14 +521,11 @@ static SDL_Texture* make_text_texture_w_wrapped(SDL_Renderer* renderer,
 // Cheap GDI text measurement (no texture creation). Includes the same
 // overhang/ClearType padding used by make_text_texture so the result matches
 // what will actually be rasterised.
-static int measure_text_width_a(const std::string& text, int font_height) {
+static int measure_text_width_a(const std::string& text, int font_height, int weight = 500) {
     if (text.empty()) return 0;
     HDC hdc = CreateCompatibleDC(nullptr);
     if (!hdc) return 0;
-    HFONT font = CreateFontA(
-        -font_height, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
-        CLEARTYPE_NATURAL_QUALITY, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
+    HFONT font = make_ui_font(font_height, weight);
     HFONT old_font = (HFONT)SelectObject(hdc, font);
     SIZE sz{};
     GetTextExtentPoint32A(hdc, text.c_str(), (int)text.size(), &sz);
@@ -609,6 +645,7 @@ void tex_cache_trim() {
 // Segoe Fluent Icons ships with Windows 11; Windows 10 has Segoe MDL2 Assets
 // (same code points for everything used here).
 const wchar_t* icon_font_name() {
+    if (g_lucide_ok) return L"lucide";   // embedded lucide-static 0.469.0
     static const wchar_t* name = []() -> const wchar_t* {
         wchar_t win[MAX_PATH] = {};
         GetWindowsDirectoryW(win, MAX_PATH);
@@ -637,10 +674,11 @@ static void draw_glyph(SDL_Renderer* r, wchar_t cp, int cx, int cy, int px,
 }
 
 // Measures cached text (ink width, line height).
-static void measure_text_c(SDL_Renderer* r, const std::string& s, int px, int* w, int* h) {
+static void measure_text_c(SDL_Renderer* r, const std::string& s, int px, int* w, int* h,
+                           int weight = 500) {
     tex_cache_trim();
-    auto& c = tex_cache()["t:" + std::to_string(px) + ":" + s];
-    if (!c.tex) c.tex = make_text_texture(r, s, px, 255, 255, 255, &c.w, &c.h);
+    auto& c = tex_cache()["t:" + std::to_string(px) + ":" + std::to_string(weight) + ":" + s];
+    if (!c.tex) c.tex = make_text_texture(r, s, px, 255, 255, 255, &c.w, &c.h, weight);
     *w = c.tex ? c.w - (px + 3) / 4 : 0;
     *h = c.tex ? c.h : 0;
 }
@@ -649,10 +687,10 @@ static void measure_text_c(SDL_Renderer* r, const std::string& s, int px, int* w
 // Returns the line height.
 static int draw_text_c(SDL_Renderer* r, const std::string& s, int px,
                        uint8_t cr, uint8_t cg, uint8_t cb, uint8_t ca,
-                       int x, int y, int align) {
+                       int x, int y, int align, int weight = 500) {
     int w = 0, h = 0;
-    measure_text_c(r, s, px, &w, &h);
-    auto& c = tex_cache()["t:" + std::to_string(px) + ":" + s];
+    measure_text_c(r, s, px, &w, &h, weight);
+    auto& c = tex_cache()["t:" + std::to_string(px) + ":" + std::to_string(weight) + ":" + s];
     if (!c.tex) return 0;
     int dx = align == 1 ? x - w / 2 : (align == 2 ? x - w : x);
     SDL_SetTextureColorMod(c.tex, cr, cg, cb);
@@ -663,10 +701,11 @@ static int draw_text_c(SDL_Renderer* r, const std::string& s, int px,
 }
 
 // Largest font size <= px at which `s` fits in max_w.
-static int fit_text_px(SDL_Renderer* r, const std::string& s, int px, int max_w) {
+static int fit_text_px(SDL_Renderer* r, const std::string& s, int px, int max_w,
+                       int weight = 500) {
     int w = 0, h = 0;
     while (px > 8) {
-        measure_text_c(r, s, px, &w, &h);
+        measure_text_c(r, s, px, &w, &h, weight);
         if (w <= max_w) break;
         --px;
     }
@@ -807,6 +846,9 @@ bool Renderer::init(const std::string& title, int /*width*/, int /*height*/) {
     // Deliver the click that activates an unfocused window instead of
     // forcing the user to click once to focus and again to interact.
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
+#ifdef _WIN32
+    load_embedded_fonts();
+#endif
 
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         std::cerr << "[Renderer] SDL_Init failed: " << SDL_GetError() << "\n";
@@ -968,7 +1010,7 @@ bool Renderer::init(const std::string& title, int /*width*/, int /*height*/) {
     {
         auto seg = [&](const std::wstring& text, uint8_t r, uint8_t g, uint8_t b,
                         const std::string& url = "", const std::string& tip = "",
-                        const wchar_t* font = L"Segoe UI") -> FooterSeg {
+                        const wchar_t* font = nullptr) -> FooterSeg {
             FooterSeg fs;
             fs.url = url;
             fs.tooltip = tip;
@@ -990,7 +1032,7 @@ bool Renderer::init(const std::string& title, int /*width*/, int /*height*/) {
         // the visual weight matches the surrounding text.
         auto iseg = [&](const std::wstring& text, uint8_t r, uint8_t g, uint8_t b,
                          const std::string& url = "", const std::string& tip = "",
-                         const wchar_t* font = L"Segoe UI") -> FooterSeg {
+                         const wchar_t* font = nullptr) -> FooterSeg {
             FooterSeg fs;
             fs.url = url;
             fs.tooltip = tip;

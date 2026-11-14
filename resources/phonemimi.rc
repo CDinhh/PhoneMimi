@@ -6,3 +6,11 @@
 
 // DPI awareness manifest
 1 RT_MANIFEST "phonemimi.manifest"
+
+// Embedded fonts (registered with AddFontMemResourceEx) and the logo
+201 RCDATA "fonts/lucide.ttf"
+202 RCDATA "fonts/PlusJakartaSans-Medium.ttf"
+203 RCDATA "fonts/PlusJakartaSans-SemiBold.ttf"
+204 RCDATA "fonts/PlusJakartaSans-Bold.ttf"
+205 RCDATA "fonts/PlusJakartaSans-ExtraBold.ttf"
+210 RCDATA "logo.png"
