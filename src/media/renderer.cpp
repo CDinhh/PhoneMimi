@@ -1538,18 +1538,20 @@ void Renderer::run() {
                 }
                 break;
 
+            case SDL_TEXTEDITING:
+                // An IME (e.g. Vietnamese Telex) holds the word it is
+                // composing until Space; mirror it live so every keystroke
+                // shows on the phone straight away.
+                if (android_kbd_on_ && !android_panel_visible_ && android_input_active_())
+                    android_type_diff_(event.edit.text);
+                break;
+
             case SDL_TEXTINPUT:
                 if (android_kbd_on_ && !android_panel_visible_ && android_input_active_()) {
-                    AndroidInput in;
-                    in.text = event.text.text;
-                    // scrcpy's text injection only handles ASCII; accented
-                    // text (Vietnamese via Unikey, ...) is pasted instead.
-                    // shortcut: overwrites the phone clipboard, switch to a
-                    // UHID keyboard if that ever matters.
-                    bool ascii = true;
-                    for (unsigned char c : in.text) if (c >= 0x80) { ascii = false; break; }
-                    in.kind = ascii ? AndroidInput::Kind::Text : AndroidInput::Kind::Clipboard;
-                    android_input_fn_(in);
+                    // Committed text: the phone usually shows it already
+                    // from the composition above, so this sends nothing.
+                    android_type_diff_(event.text.text);
+                    android_ime_shown_.clear();
                     break;
                 }
                 if (android_panel_visible_) {
@@ -6729,6 +6731,43 @@ void Renderer::draw_android_qr(int svx, int svy, int svw, int svh) {
     }
 }
 
+// Turns what the phone shows for the word being typed (android_ime_shown_)
+// into `target`: backspace over the part that differs, then type the rest.
+void Renderer::android_type_diff_(const std::string& target) {
+    const std::string& shown = android_ime_shown_;
+    size_t common = 0;
+    while (common < shown.size() && common < target.size() && shown[common] == target[common])
+        ++common;
+    // Never split a UTF-8 character: back up to the start of one.
+    auto mid_char = [](const std::string& s, size_t i) {
+        return i < s.size() && (static_cast<unsigned char>(s[i]) & 0xC0) == 0x80;
+    };
+    while (common > 0 && (mid_char(shown, common) || mid_char(target, common))) --common;
+
+    AndroidInput key;
+    key.kind = AndroidInput::Kind::Key;
+    key.keycode = 67;   // KEYCODE_DEL (backspace), once per character
+    for (size_t i = common; i < shown.size(); ++i) {
+        if (mid_char(shown, i)) continue;
+        key.action = 0; android_input_fn_(key);
+        key.action = 1; android_input_fn_(key);
+    }
+
+    if (common < target.size()) {
+        AndroidInput in;
+        in.text = target.substr(common);
+        // scrcpy's text injection only handles ASCII; accented text is
+        // pasted instead.
+        // shortcut: overwrites the phone clipboard, switch to a UHID
+        // keyboard if that ever matters.
+        bool ascii = true;
+        for (unsigned char c : in.text) if (c >= 0x80) { ascii = false; break; }
+        in.kind = ascii ? AndroidInput::Kind::Text : AndroidInput::Kind::Clipboard;
+        android_input_fn_(in);
+    }
+    android_ime_shown_ = target;
+}
+
 void Renderer::layout_side_buttons_() {
     for (int i = 0; i < 4; ++i) side_btn_[i] = side_btn_hit_[i] = {};
     if (!phone_frame_.has_side_buttons() || frame_dst_w_ <= 0) return;
@@ -6893,6 +6932,7 @@ bool Renderer::android_forward_key_(const SDL_Event& ev) {
             case SDLK_k:
                 if (down && !ev.key.repeat) {
                     android_kbd_on_ = !android_kbd_on_;
+                    android_ime_shown_.clear();
                     if (android_kbd_on_) SDL_StartTextInput(); else SDL_StopTextInput();
                     toast(android_kbd_on_ ? "Keyboard -> phone: ON (Ctrl+K to turn off)"
                                           : "Keyboard -> phone: OFF");

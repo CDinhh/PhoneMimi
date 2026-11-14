@@ -797,6 +797,9 @@ private:
     bool android_kbd_on_ = false;       // keyboard forwarding (Ctrl+K)
     bool android_touch_down_ = false;   // left button held on the phone screen
     bool android_input_active_();
+    // What the phone currently shows for the word the PC's IME is composing.
+    std::string android_ime_shown_;
+    void android_type_diff_(const std::string& target);
     bool android_video_rect_(int* x, int* y, int* w, int* h);
     void android_send_touch_(int action, int mx, int my);
     bool android_forward_key_(const SDL_Event& ev);
