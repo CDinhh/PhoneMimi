@@ -159,7 +159,7 @@ bool AirPlayServer::start(const Config& config) {
     // computer name (plus a fixed salt) gives us the same MAC every run
     // on the same PC, while still being unique per machine.
     {
-        std::string ident = "1PhoneMirror::AirPlay::v1::";
+        std::string ident = "PhoneMimi::AirPlay::v1::";
 #ifdef _WIN32
         char cn[256];
         DWORD cn_len = sizeof(cn);

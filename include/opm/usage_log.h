@@ -5,7 +5,7 @@
 
 namespace opm {
 
-// Local-only CSV usage log — %APPDATA%\1PhoneMirror\usage_log.csv. Never
+// Local-only CSV usage log — %APPDATA%\PhoneMimi\usage_log.csv. Never
 // transmitted anywhere; purely for the in-app Statistics drawer (T key).
 // Rows: timestamp,event,platform,device,duration_sec
 //   event    = "app_start" | "app_stop" | "session_start" | "session_end"

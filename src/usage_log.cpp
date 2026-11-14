@@ -69,7 +69,7 @@ std::string UsageLog::file_path() {
 #ifdef _WIN32
     char appdata[MAX_PATH];
     if (SUCCEEDED(SHGetFolderPathA(nullptr, CSIDL_APPDATA, nullptr, 0, appdata)))
-        dir = std::string(appdata) + "\\1PhoneMirror";
+        dir = std::string(appdata) + "\\PhoneMimi";
 #endif
     std::error_code ec;
     std::filesystem::create_directories(dir, ec);

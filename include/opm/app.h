@@ -31,7 +31,7 @@ public:
     ~App();
 
     struct Config {
-        std::string name = "1PhoneMirror";
+        std::string name = "PhoneMimi";
         int window_width = 1280;
         int window_height = 720;
         bool enable_airplay = true;

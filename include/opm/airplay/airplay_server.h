@@ -32,7 +32,7 @@ public:
     ~AirPlayServer();
 
     struct Config {
-        std::string server_name = "1PhoneMirror";
+        std::string server_name = "PhoneMimi";
         uint16_t port = 7000;
         uint16_t mirror_port = 7100;
     };

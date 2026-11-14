@@ -12,7 +12,7 @@
 #ifndef OPM_VERSION_PATCH
 #define OPM_VERSION_PATCH 0
 #endif
-#define OPM_APP_NAME "1PhoneMirror"
+#define OPM_APP_NAME "PhoneMimi"
 
 // Default network settings
 constexpr int AIRPLAY_PORT = 7000;

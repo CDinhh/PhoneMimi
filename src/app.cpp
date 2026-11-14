@@ -615,9 +615,9 @@ void App::shutdown() {
     // shutting down; that is a privileged action with side effects.
     if (config_.cleanup_adb_on_shutdown) {
         if (MessageBoxA(nullptr,
-                        "1PhoneMirror is about to terminate adb.exe processes to free UDP 5353.\n\n"
+                        "PhoneMimi is about to terminate adb.exe processes to free UDP 5353.\n\n"
                         "This may affect other Android tools on this system. Continue?",
-                        "1PhoneMirror - Android cleanup",
+                        "PhoneMimi - Android cleanup",
                         MB_YESNO | MB_ICONWARNING) == IDYES) {
             kill_adb_processes();
         }
@@ -634,9 +634,9 @@ void App::shutdown() {
             std::cerr.flush();
 #if defined(_WIN32)
             if (MessageBoxA(nullptr,
-                            "1PhoneMirror shutdown is taking too long.\n\n"
+                            "PhoneMimi shutdown is taking too long.\n\n"
                             "Force exit now?",
-                            "1PhoneMirror - Shutdown timeout",
+                            "PhoneMimi - Shutdown timeout",
                             MB_YESNO | MB_ICONWARNING) == IDYES) {
                 std::cerr << "[Shutdown] WATCHDOG: forcing exit\n";
                 std::cerr.flush();
@@ -663,9 +663,9 @@ void App::shutdown() {
     // Final sweep is only done when the user explicitly opted in.
     if (config_.cleanup_adb_on_shutdown) {
         if (MessageBoxA(nullptr,
-                        "1PhoneMirror is about to terminate adb.exe processes again to release UDP 5353.\n\n"
+                        "PhoneMimi is about to terminate adb.exe processes again to release UDP 5353.\n\n"
                         "Continue?",
-                        "1PhoneMirror - Android cleanup",
+                        "PhoneMimi - Android cleanup",
                         MB_YESNO | MB_ICONWARNING) == IDYES) {
             kill_adb_processes();
         }

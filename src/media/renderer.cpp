@@ -913,7 +913,7 @@ bool Renderer::init(const std::string& title, int /*width*/, int /*height*/) {
     waiting_tex_ = make_text_texture(sdl_renderer_, "Waiting for connection...",
                                       48, 180, 180, 180, &waiting_tex_w_, &waiting_tex_h_);
     ios_instr_tex_ = make_text_texture(sdl_renderer_,
-        "Control Center > Screen Mirroring > 1PhoneMirror",
+        "Control Center > Screen Mirroring > PhoneMimi",
         32, 130, 130, 130, &ios_instr_w_, &ios_instr_h_);
     android_instr_tex_ = make_text_texture(sdl_renderer_,
         "Press A  -  Settings > Wireless debugging > Pair with code",
@@ -1009,7 +1009,7 @@ bool Renderer::init(const std::string& title, int /*width*/, int /*height*/) {
             line.tex = make_text_texture_w(sdl_renderer_, text, font_sz, r, g, b, &line.w, &line.h);
             return line;
         };
-        std::wstring info_title = L"1PhoneMirror " +
+        std::wstring info_title = L"PhoneMimi " +
                                   (L"v" + std::to_wstring(OPM_VERSION_MAJOR) +
                                    L"." + std::to_wstring(OPM_VERSION_MINOR) +
                                    L"." + std::to_wstring(OPM_VERSION_PATCH));
@@ -1166,7 +1166,7 @@ bool Renderer::init(const std::string& title, int /*width*/, int /*height*/) {
 #ifdef _WIN32
     char pictures[MAX_PATH];
     if (SUCCEEDED(SHGetFolderPathA(nullptr, CSIDL_MYPICTURES, nullptr, 0, pictures)))
-        screenshot_dir_ = std::string(pictures) + "\\1PhoneMirror";
+        screenshot_dir_ = std::string(pictures) + "\\PhoneMimi";
     else
         screenshot_dir_ = "screenshots";
 #else
@@ -2320,7 +2320,7 @@ void Renderer::run() {
                                 if (log_to_file_session_) {
                                     std::error_code ec;
                                     std::filesystem::create_directories(screenshot_dir_, ec);
-                                    std::string path = screenshot_dir_ + "/1PhoneMirror.log";
+                                    std::string path = screenshot_dir_ + "/PhoneMimi.log";
                                     if (opm::LogBuffer::instance().open_file(path)) {
                                         std::cout << "[Log] File logging enabled: " << path << "\n";
                                     } else {
@@ -2411,7 +2411,7 @@ void Renderer::run() {
                             in_rect(mx, my, info_copy_ps_btn_.x, info_copy_ps_btn_.y,
                                     info_copy_ps_btn_.w, info_copy_ps_btn_.h)) {
                             const char* ps_script =
-                                "# 1PhoneMirror — network troubleshooting\r\n"
+                                "# PhoneMimi — network troubleshooting\r\n"
                                 "Write-Host '== Firewall profile (LocalRulesAllowed = False means MDM/Intune blocks installer rules) ==' -ForegroundColor Cyan\r\n"
                                 "Get-NetFirewallProfile |\r\n"
                                 "    Format-Table Name, Enabled, AllowLocalFirewallRules, AllowLocalIPsecRules, DefaultInboundAction -AutoSize\r\n"
@@ -2422,9 +2422,9 @@ void Renderer::run() {
                                 "    Select-Object PSChildName, AllowLocalPolicyMerge, AllowLocalIpsecPolicyMerge, EnableFirewall, DefaultInboundAction |\r\n"
                                 "    Format-Table -AutoSize\r\n"
                                 "\r\n"
-                                "Write-Host '== Firewall rules for 1PhoneMirror ==' -ForegroundColor Cyan\r\n"
+                                "Write-Host '== Firewall rules for PhoneMimi ==' -ForegroundColor Cyan\r\n"
                                 "Get-NetFirewallApplicationFilter |\r\n"
-                                "    Where-Object Program -like '*1PhoneMirror*' |\r\n"
+                                "    Where-Object Program -like '*PhoneMimi*' |\r\n"
                                 "    ForEach-Object {\r\n"
                                 "        $r = Get-NetFirewallRule -AssociatedNetFirewallApplicationFilter $_\r\n"
                                 "        [pscustomobject]@{\r\n"
@@ -3189,7 +3189,7 @@ void Renderer::render_frame() {
             draw_glyph(sdl_renderer_, 0xE8EA, mcx, mcy, (int)(mark_r * 1.1f), 255, 255, 255, 255);
 
             int ty = mcy + (int)(mark_r * 1.95f);
-            int th = draw_text_c(sdl_renderer_, "1PhoneMirror", (int)(u * 0.085f),
+            int th = draw_text_c(sdl_renderer_, "PhoneMimi", (int)(u * 0.085f),
                                  240, 243, 250, 255, mcx, ty, 1);
             draw_text_c(sdl_renderer_, "Waiting for a phone to connect...", fit_text_px(
                             sdl_renderer_, "Waiting for a phone to connect...", (int)(u * 0.045f),
@@ -3240,7 +3240,7 @@ void Renderer::render_frame() {
             draw_card(android_icon_tex_, "Android",
                       "Wi-Fi code, QR code or USB cable", "Press A to get started");
             draw_card(ios_icon_tex_, "iPhone / iPad",
-                      "Control Center > Screen Mirroring", "then choose 1PhoneMirror");
+                      "Control Center > Screen Mirroring", "then choose PhoneMimi");
         }
 #endif
 
@@ -4893,7 +4893,7 @@ void Renderer::draw_island() {
             case 0: tip = "Close (Esc)";              break;
             case 1: tip = "Screenshot (Ctrl+S)";      break;
             case 2: tip = "Open Screenshots Folder";  break;
-            case 3: tip = "About 1PhoneMirror (I)"; break;
+            case 3: tip = "About PhoneMimi (I)"; break;
             case 6: tip = "Settings (S)"; break;
             case 7: {
                 static std::string rec_tip;
@@ -7829,7 +7829,7 @@ void Renderer::take_screenshot() {
     if (!save && snag) {
         std::error_code ec;
         auto tmp = std::filesystem::temp_directory_path(ec);
-        if (!ec) snagit_path = (tmp / ("1PhoneMirror_" + std::string(timestamp) + ".png")).string();
+        if (!ec) snagit_path = (tmp / ("PhoneMimi_" + std::string(timestamp) + ".png")).string();
     }
 
     bool saved = false;
@@ -8490,7 +8490,7 @@ void Renderer::save_annotated() {
     } else if (snag) {
         std::error_code ec;
         auto tmp = std::filesystem::temp_directory_path(ec);
-        if (!ec) snagit_path = (tmp / ("1PhoneMirror_annot_" + std::string(timestamp) + ".png")).string();
+        if (!ec) snagit_path = (tmp / ("PhoneMimi_annot_" + std::string(timestamp) + ".png")).string();
     }
     wrote = emit_screenshot_output(baked.data(), annotator_bg_w_, annotator_bg_h_,
                                    annotator_bg_w_ * 4, filename, snagit_path,

@@ -1,4 +1,4 @@
-1PhoneMirror — third-party components
+PhoneMimi — third-party components
 =====================================
 
 This product bundles the following components. Their source code is

@@ -226,7 +226,7 @@ struct SslCert {
 
         auto* name = X509_get_subject_name(cert);
         X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC,
-            (const unsigned char*)"1PhoneMirror Cast", -1, -1, 0);
+            (const unsigned char*)"PhoneMimi Cast", -1, -1, 0);
         X509_set_issuer_name(cert, name);
 
         // Add Subject Alternative Name (required by modern TLS stacks)
@@ -235,7 +235,7 @@ struct SslCert {
         X509V3_set_ctx(&v3ctx, cert, cert, nullptr, nullptr, 0);
 
         auto* san = X509V3_EXT_conf_nid(nullptr, &v3ctx, NID_subject_alt_name,
-                                         (char*)"DNS:1PhoneMirror");
+                                         (char*)"DNS:PhoneMimi");
         if (san) { X509_add_ext(cert, san, -1); X509_EXTENSION_free(san); }
 
         // Key Usage: digitalSignature, keyEncipherment
@@ -300,7 +300,7 @@ struct CastReceiver::Impl {
     std::thread mdns_thread;
     std::atomic<bool> mdns_running{false};
     std::string mdns_hostname;
-    std::string mdns_service_name;  // e.g. "1PhoneMirror._googlecast._tcp.local"
+    std::string mdns_service_name;  // e.g. "PhoneMimi._googlecast._tcp.local"
     std::string mdns_service_type;  // "_googlecast._tcp.local"
     std::vector<uint8_t> mdns_txt;
     uint32_t mdns_local_ip = 0;
@@ -637,7 +637,7 @@ struct CastReceiver::Impl {
             {"cd", "A4F99FBA49A3C21A"},
             {"rm", ""},
             {"ve", "05"},
-            {"md", "1PhoneMirror"},
+            {"md", "PhoneMimi"},
             {"ic", "/setup/icon.png"},
             {"fn", name},
             {"ca", "199172"},
@@ -718,7 +718,7 @@ struct CastReceiver::Impl {
             txt["cd"] = "A4F99FBA49A3C21A";
             txt["rm"] = "";
             txt["ve"] = "05";
-            txt["md"] = "1PhoneMirror";
+            txt["md"] = "PhoneMimi";
             txt["ic"] = "/setup/icon.png";
             txt["fn"] = name;
             txt["ca"] = "199172";

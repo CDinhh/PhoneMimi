@@ -27,7 +27,7 @@ public:
     ~CastReceiver();
 
     struct Config {
-        std::string device_name = "1PhoneMirror";
+        std::string device_name = "PhoneMimi";
         uint16_t port = 8009;
     };
 

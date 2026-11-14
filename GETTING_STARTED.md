@@ -1,6 +1,6 @@
-# Getting Started with 1PhoneMirror
+# Getting Started with PhoneMimi
 
-This guide walks you through setting up your development environment, building, and running 1PhoneMirror on Windows.
+This guide walks you through setting up your development environment, building, and running PhoneMimi on Windows.
 
 ## Prerequisites
 
@@ -112,14 +112,14 @@ cmake --build . --config Release
 ## Step 4 — Run
 
 ```powershell
-.\build\Release\1phonemirror.exe --name "My PC"
+.\build\Release\phonemimi.exe --name "My PC"
 ```
 
 ### Command line options
 
 | Option | Default | Description |
 |---|---|---|
-| `--name <name>` | `1PhoneMirror` | Name shown on mobile devices during discovery |
+| `--name <name>` | `PhoneMimi` | Name shown on mobile devices during discovery |
 | `--width <px>` | `1280` | Window width |
 | `--height <px>` | `720` | Window height |
 | `--no-airplay` | — | Disable AirPlay receiver |
@@ -164,7 +164,7 @@ cmake --build . --config Release
 
 - Verify Bonjour SDK is installed and `BONJOUR_SDK_HOME` is set
 - Ensure both devices are on the same subnet (some routers isolate Wi-Fi clients)
-- Check Windows Firewall — allow `1phonemirror.exe` through
+- Check Windows Firewall — allow `phonemimi.exe` through
 
 ### Miracast device doesn't see the PC
 

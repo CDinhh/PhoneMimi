@@ -1,8 +1,8 @@
 # tools/
 
-Vendored runtime helpers required by 1PhoneMirror's Android (scrcpy)
+Vendored runtime helpers required by PhoneMimi's Android (scrcpy)
 receiver. Everything in this directory is copied next to
-`1PhoneMirror.exe` on every build by a `POST_BUILD` step in
+`PhoneMimi.exe` on every build by a `POST_BUILD` step in
 [../CMakeLists.txt](../CMakeLists.txt) and shipped inside the MSI by
 [../package.ps1](../package.ps1).
 
@@ -22,7 +22,7 @@ Miracast / Cast still work.
 | `scrcpy-server.jar` | scrcpy (Genymobile) | Apache-2.0 |
 
 Only `adb.exe` + its two `AdbWin*.dll`s and `scrcpy-server.jar` are
-used by 1PhoneMirror; the rest are bundled simply because they're part
+used by PhoneMimi; the rest are bundled simply because they're part
 of the upstream platform-tools archive.
 
 ## Updating

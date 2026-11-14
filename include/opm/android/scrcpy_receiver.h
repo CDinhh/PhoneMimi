@@ -46,7 +46,7 @@ public:
     ~AdbController();
 
     // Path to adb.exe. Defaults to "adb" (must be on PATH); the installer is
-    // expected to ship Android Platform-Tools next to 1PhoneMirror.exe.
+    // expected to ship Android Platform-Tools next to PhoneMimi.exe.
     void set_adb_path(const std::string& path) { adb_path_ = path; }
     const std::string& adb_path() const { return adb_path_; }
 

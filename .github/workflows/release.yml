@@ -102,7 +102,7 @@ jobs:
         id: hash
         shell: pwsh
         run: |
-          $msi = "dist\1PhoneMirror-${{ steps.ver.outputs.version }}.msi"
+          $msi = "dist\PhoneMimi-${{ steps.ver.outputs.version }}.msi"
           $h = (Get-FileHash $msi -Algorithm SHA256).Hash
           echo "sha256=$h" >> $env:GITHUB_OUTPUT
           Write-Host "SHA256 (unsigned CI build, NOT for release): $h"
@@ -110,13 +110,13 @@ jobs:
       - name: Upload MSI artifact (unsigned, validation only)
         uses: actions/upload-artifact@v4
         with:
-          name: 1PhoneMirror-${{ steps.ver.outputs.version }}-msi-unsigned
-          path: dist/1PhoneMirror-${{ steps.ver.outputs.version }}.msi
+          name: PhoneMimi-${{ steps.ver.outputs.version }}-msi-unsigned
+          path: dist/PhoneMimi-${{ steps.ver.outputs.version }}.msi
           retention-days: 14
 
       - name: Upload portable folder (unsigned)
         uses: actions/upload-artifact@v4
         with:
-          name: 1PhoneMirror-${{ steps.ver.outputs.version }}-portable
+          name: PhoneMimi-${{ steps.ver.outputs.version }}-portable
           path: dist/stage
           retention-days: 14

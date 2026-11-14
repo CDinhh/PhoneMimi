@@ -1,4 +1,4 @@
-# AGENTS.md — 1PhoneMirror
+# AGENTS.md — PhoneMimi
 
 C++20 Windows screen-mirroring receiver (AirPlay, Android/scrcpy, Miracast, Cast).
 Single-binary SDL2 + FFmpeg desktop app. Fork of MSEndpointMgr/1PhoneMirror
@@ -13,15 +13,15 @@ For user-facing docs see [README.md](README.md), [GETTING_STARTED.md](GETTING_ST
 .\scripts\setup_deps.ps1
 # Every build (Release by default)
 .\scripts\build.ps1                  # add -Config Debug / -Clean / -NoAirPlay / -NoMiracast
-.\build\Release\1PhoneMirror.exe
+.\build\Release\PhoneMimi.exe
 ```
 
-The exe name on disk is `1PhoneMirror.exe`; older docs/scripts sometimes spell
+The exe name on disk is `PhoneMimi.exe`; older docs/scripts sometimes spell
 it lowercase — Windows treats them as equal but match the CMake target
-(`1PhoneMirror`) in new code.
+(`PhoneMimi`) in new code.
 
 There is **no automated test suite**. Closest thing to a unit test is
-`1PhoneMirror.exe --srp-self-test` (returns 0 on success). Always smoke-test
+`PhoneMimi.exe --srp-self-test` (returns 0 on success). Always smoke-test
 a Release build before tagging.
 
 ## Repository layout
@@ -74,7 +74,7 @@ a Release build before tagging.
 - **Settings persistence:** add fields to `opm::Settings` in
   [include/opm/settings.h](include/opm/settings.h), then extend the parser
   and writer in [src/settings.cpp](src/settings.cpp). File format is plain
-  `key=value` lines in `%APPDATA%\1PhoneMirror\settings.ini`. Always provide
+  `key=value` lines in `%APPDATA%\PhoneMimi\settings.ini`. Always provide
   a sensible default so existing users don't lose their config.
 - **Strings stay ASCII** in code and CLI output (the log viewer renders with
   SDL_ttf; non-ASCII glyphs show as boxes).
@@ -84,7 +84,7 @@ a Release build before tagging.
 ## Known pitfalls (already coded around — don't undo)
 
 - **Stale process / port conflict.** `kill_stale_instances()` in
-  [src/main.cpp](src/main.cpp) terminates leftover `1PhoneMirror.exe`
+  [src/main.cpp](src/main.cpp) terminates leftover `PhoneMimi.exe`
   processes before binding ports 7000/7100 and registering mDNS. Required
   after a crash.
 - **`adb.exe` squats on UDP 5353.** `kill_adb_processes()` in
@@ -111,7 +111,7 @@ a Release build before tagging.
   `-IntuneWinAppUtil <path>` wraps the MSI for Intune.
 - **Portable:** `.\package.ps1 -Portable` - same build + staging, then copies
   the result to `app\` (git-ignored) and stops before WiX. Run this after
-  every code change; `app\1PhoneMirror.exe` is the copy the owner uses.
+  every code change; `app\PhoneMimi.exe` is the copy the owner uses.
 - **CI:** [.github/workflows/release.yml](.github/workflows/release.yml) is a
   manual `workflow_dispatch` validation build that uploads an unsigned
   artifact; it never creates a GitHub Release.

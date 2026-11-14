@@ -6,7 +6,7 @@
 namespace opm {
 
 // User-configurable runtime settings. Persisted to
-// %APPDATA%\1PhoneMirror\settings.ini on Windows.
+// %APPDATA%\PhoneMimi\settings.ini on Windows.
 struct Settings {
     // Phone bezel colour (mid/dark range — clamped on load).
     uint8_t bezel_r = 28;
@@ -41,8 +41,8 @@ struct Settings {
     int  record_bitrate_kbps = 6000;
 
     // When true, the AirPlay/Cast/Miracast service name advertises as
-    // "1PhoneMirror by <COMPUTERNAME>" instead of
-    // "1PhoneMirror by MSEndpointMgr". Useful when multiple instances run
+    // "PhoneMimi by <COMPUTERNAME>" instead of
+    // "PhoneMimi by MSEndpointMgr". Useful when multiple instances run
     // on the same network. Applied at next launch.
     bool use_computer_name = false;
 

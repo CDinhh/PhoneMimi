@@ -191,7 +191,7 @@ UpdateCheckResult check_for_update(const std::string& current_version) {
         // Winget currently points at v0.6.1, which is published on GitHub as
         // a prerelease. The /latest endpoint intentionally excludes it.
         L"/repos/CDinhh/1PhoneMirror/releases?per_page=1",
-        L"1PhoneMirror-UpdateCheck/1.0",
+        L"PhoneMimi-UpdateCheck/1.0",
         &status, &err);
 
     if (body.empty() || status != 200) {

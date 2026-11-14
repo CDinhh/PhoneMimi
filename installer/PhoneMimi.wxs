@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  WiX 5 source for 1PhoneMirror.
+  WiX 5 source for PhoneMimi.
   Build via package.ps1 (which installs the WiX dotnet tool, stages files,
   and invokes `wix build`). See package.ps1 for the exact command line.
 -->
@@ -8,7 +8,7 @@
      xmlns:fire="http://wixtoolset.org/schemas/v4/wxs/firewall"
      xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
 
-  <Package Name="1PhoneMirror"
+  <Package Name="PhoneMimi"
            Manufacturer="CDinhh"
            Version="$(Version)"
            UpgradeCode="6F4E6B5C-2E4A-4B1F-9D2E-7B5C8F3A1E10"
@@ -16,11 +16,11 @@
            InstallerVersion="500"
            Scope="perMachine">
 
-    <SummaryInformation Description="1PhoneMirror — wireless screen mirroring for iOS and Android"
+    <SummaryInformation Description="PhoneMimi — wireless screen mirroring for iOS and Android"
                         Manufacturer="CDinhh" />
 
     <!-- Block downgrades, allow seamless upgrades. -->
-    <MajorUpgrade DowngradeErrorMessage="A newer version of 1PhoneMirror is already installed." />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of PhoneMimi is already installed." />
 
     <MediaTemplate EmbedCab="yes" />
 
@@ -30,11 +30,11 @@
 
     <!-- Install directories -->
     <StandardDirectory Id="ProgramFiles64Folder">
-      <Directory Id="INSTALLFOLDER" Name="1PhoneMirror" />
+      <Directory Id="INSTALLFOLDER" Name="PhoneMimi" />
     </StandardDirectory>
 
     <StandardDirectory Id="ProgramMenuFolder">
-      <Directory Id="ApplicationProgramsFolder" Name="1PhoneMirror" />
+      <Directory Id="ApplicationProgramsFolder" Name="PhoneMimi" />
     </StandardDirectory>
 
     <!-- Files. The whole staging directory is harvested via wix.exe at build time
@@ -43,20 +43,20 @@
     <ComponentGroup Id="MainExecutable" Directory="INSTALLFOLDER">
       <Component Id="cmpMainExe" Guid="*">
         <File Id="exe.OnePhoneMirror"
-              Source="$(StagingDir)\1PhoneMirror.exe"
+              Source="$(StagingDir)\PhoneMimi.exe"
               KeyPath="yes">
 
           <!-- Firewall: allow the EXE itself, both TCP and UDP, all profiles.
                Nesting under <File> binds the rule to this program path so
                Windows does not prompt the user on first listen. -->
           <fire:FirewallException Id="fwTcp"
-                                  Name="1PhoneMirror (TCP)"
+                                  Name="PhoneMimi (TCP)"
                                   Protocol="tcp"
                                   Scope="any"
                                   Profile="all"
                                   IgnoreFailure="yes" />
           <fire:FirewallException Id="fwUdp"
-                                  Name="1PhoneMirror (UDP)"
+                                  Name="PhoneMimi (UDP)"
                                   Protocol="udp"
                                   Scope="any"
                                   Profile="all"
@@ -70,7 +70,7 @@
     <ComponentGroup Id="HarvestedFiles" Directory="INSTALLFOLDER">
       <Files Include="$(StagingDir)\**">
         <!-- Don't double-add the main EXE handled above. -->
-        <Exclude Files="$(StagingDir)\1PhoneMirror.exe" />
+        <Exclude Files="$(StagingDir)\PhoneMimi.exe" />
       </Files>
     </ComponentGroup>
 
@@ -78,7 +78,7 @@
     <ComponentGroup Id="Shortcuts" Directory="ApplicationProgramsFolder">
       <Component Id="cmpStartMenu" Guid="*">
         <Shortcut Id="StartMenuShortcut"
-                  Name="1PhoneMirror"
+                  Name="PhoneMimi"
                   Description="Wireless screen mirroring for iOS and Android"
                   Target="[#exe.OnePhoneMirror]"
                   WorkingDirectory="INSTALLFOLDER" />
@@ -86,7 +86,7 @@
                       Directory="ApplicationProgramsFolder"
                       On="uninstall" />
         <RegistryValue Root="HKCU"
-                       Key="Software\1PhoneMirror"
+                       Key="Software\PhoneMimi"
                        Name="installed"
                        Type="integer"
                        Value="1"
@@ -94,7 +94,7 @@
       </Component>
     </ComponentGroup>
 
-    <Feature Id="Main" Title="1PhoneMirror" Level="1">
+    <Feature Id="Main" Title="PhoneMimi" Level="1">
       <ComponentGroupRef Id="MainExecutable" />
       <ComponentGroupRef Id="HarvestedFiles" />
       <ComponentGroupRef Id="Shortcuts" />

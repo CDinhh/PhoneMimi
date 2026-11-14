@@ -1,14 +1,14 @@
 ﻿<#
 .SYNOPSIS
-    Build, stage, and package 1PhoneMirror into an MSI (and optionally an
+    Build, stage, and package PhoneMimi into an MSI (and optionally an
     Intune .intunewin) ready for distribution.
 
 .DESCRIPTION
     Pipeline:
         1. Build Release with CMake/MSBuild (skippable with -SkipBuild).
-        2. Stage 1PhoneMirror.exe + all required runtime DLLs and assets
+        2. Stage PhoneMimi.exe + all required runtime DLLs and assets
            into  dist\stage\.
-        3. Run WiX 5 to produce  dist\1PhoneMirror-<ver>.msi.
+        3. Run WiX 5 to produce  dist\PhoneMimi-<ver>.msi.
         4. (Optional) sign the MSI with signtool if -SignCertThumbprint given.
         5. (Optional) wrap into .intunewin if IntuneWinAppUtil.exe is on PATH
            (or its path is provided via -IntuneWinAppUtil).
@@ -35,7 +35,7 @@
 
 .PARAMETER Portable
     Stop after staging and copy the result to  app\  - a self-contained
-    folder you can run directly (app\1PhoneMirror.exe). No MSI, no WiX.
+    folder you can run directly (app\PhoneMimi.exe). No MSI, no WiX.
 
 .PARAMETER IntuneWinAppUtil
     Optional path to IntuneWinAppUtil.exe. If found (or found on PATH), the
@@ -165,14 +165,14 @@ if (-not $Version) {
         $rendererCpp = Join-Path $root 'src\media\renderer.cpp'
         if (Test-Path $rendererCpp) {
             # Match the info-panel title line specifically, not stray v0.x.y in comments.
-            $m = Select-String -Path $rendererCpp -Pattern '1PhoneMirror v(\d+\.\d+\.\d+)' |
+            $m = Select-String -Path $rendererCpp -Pattern 'PhoneMimi v(\d+\.\d+\.\d+)' |
                  Select-Object -First 1
             if ($m) { $Version = $m.Matches[0].Groups[1].Value }
         }
     }
     if (-not $Version) { $Version = '0.0.0' }
 }
-Write-Host "==> Packaging 1PhoneMirror v$Version" -ForegroundColor Cyan
+Write-Host "==> Packaging PhoneMimi v$Version" -ForegroundColor Cyan
 
 $buildDir = Join-Path $root 'build'
 $releaseDir = Join-Path $buildDir 'Release'
@@ -189,8 +189,8 @@ if (-not $SkipBuild) {
     if ($LASTEXITCODE -ne 0) { throw "Build failed" }
 }
 
-if (-not (Test-Path (Join-Path $releaseDir '1PhoneMirror.exe'))) {
-    throw "1PhoneMirror.exe not found in $releaseDir. Run build first."
+if (-not (Test-Path (Join-Path $releaseDir 'PhoneMimi.exe'))) {
+    throw "PhoneMimi.exe not found in $releaseDir. Run build first."
 }
 
 # ---------- 3. Stage ----------
@@ -238,7 +238,7 @@ if (-not $vcDir) {
 }
 
 # Sanity check — required runtimes must be present.
-$required = @('1PhoneMirror.exe', 'SDL2.dll', 'vcruntime140.dll', 'msvcp140.dll')
+$required = @('PhoneMimi.exe', 'SDL2.dll', 'vcruntime140.dll', 'msvcp140.dll')
 foreach ($f in $required) {
     if (-not (Test-Path (Join-Path $stage $f))) {
         throw "Required file missing from stage: $f"
@@ -255,7 +255,7 @@ if ($Portable) {
     if (Test-Path $app) { Remove-Item -Recurse -Force $app }
     Copy-Item -Path $stage -Destination $app -Recurse -Force
     Get-ChildItem $app -Recurse -Include *.pdb, *.ilk, *.exp, *.lib | Remove-Item -Force
-    Write-Host "==> Portable build ready: $app\1PhoneMirror.exe" -ForegroundColor Green
+    Write-Host "==> Portable build ready: $app\PhoneMimi.exe" -ForegroundColor Green
     return
 }
 
@@ -353,10 +353,10 @@ foreach ($ext in @('WixToolset.Firewall.wixext', 'WixToolset.UI.wixext')) {
 
 # ---------- 6. Build the MSI ----------
 if (-not (Test-Path $dist)) { New-Item -ItemType Directory -Path $dist | Out-Null }
-$msi = Join-Path $dist "1PhoneMirror-$Version.msi"
+$msi = Join-Path $dist "PhoneMimi-$Version.msi"
 Write-Host "==> Building MSI: $msi" -ForegroundColor Cyan
 
-$wxs = Join-Path $installerDir '1PhoneMirror.wxs'
+$wxs = Join-Path $installerDir 'PhoneMimi.wxs'
 
 & $wix.Source build $wxs `
     -ext WixToolset.Firewall.wixext `
@@ -400,7 +400,7 @@ if ($intuneTool) {
 
     Write-Host "==> Intune package ready in: $intuneOut" -ForegroundColor Green
     Write-Host ""
-    Write-Host "    Intune install command:   msiexec /i `"1PhoneMirror-$Version.msi`" /qn /l*v `"%ProgramData%\1PhoneMirror_install.log`""
+    Write-Host "    Intune install command:   msiexec /i `"PhoneMimi-$Version.msi`" /qn /l*v `"%ProgramData%\PhoneMimi_install.log`""
     Write-Host "    Intune uninstall command: msiexec /x {ProductCode-from-MSI} /qn"
     Write-Host "    Detection rule:           MSI product code (auto)"
     Write-Host "    Install behavior:         System"

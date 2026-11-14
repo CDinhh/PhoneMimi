@@ -1,4 +1,4 @@
-# 1PhoneMirror Build Script
+# PhoneMimi Build Script
 
 param(
     [ValidateSet("Debug", "Release")]
@@ -59,7 +59,7 @@ try {
     Write-Host "`nBuilding ($Config)..." -ForegroundColor Cyan
     & $cmake --build . --config $Config --parallel
 
-    Write-Host "`nBuild complete: build\$Config\1phonemirror.exe" -ForegroundColor Green
+    Write-Host "`nBuild complete: build\$Config\phonemimi.exe" -ForegroundColor Green
 }
 finally {
     Pop-Location

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Azure Trusted Signing (Artifact Signing) helper for 1PhoneMirror.
+    Azure Trusted Signing (Artifact Signing) helper for PhoneMimi.
 
 .DESCRIPTION
     Signs files with the cloud-hosted certificate profile via signtool's
@@ -19,7 +19,7 @@
     Dot-source this file, then call the functions.
 #>
 
-$script:TsRoot = Join-Path $env:LOCALAPPDATA '1PhoneMirror\trusted-signing'
+$script:TsRoot = Join-Path $env:LOCALAPPDATA 'PhoneMimi\trusted-signing'
 $script:TsPackage = 'Microsoft.Trusted.Signing.Client'
 $script:TsVersion = '1.0.95'
 $script:TsPackageSha256 = '3BFCF1E0A3CB42AF1692F0A8ED45C15DE070C2DE86F28A59B2795D904D8A920F'

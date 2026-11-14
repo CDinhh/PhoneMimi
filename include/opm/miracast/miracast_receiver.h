@@ -31,7 +31,7 @@ public:
     ~MiracastReceiver();
 
     struct Config {
-        std::string display_name = "1PhoneMirror";
+        std::string display_name = "PhoneMimi";
         bool require_pin = false;
         uint16_t rtsp_port = 7236;  // Standard WFD RTSP port
     };

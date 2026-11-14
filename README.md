@@ -1,4 +1,4 @@
-# 1PhoneMirror
+# PhoneMimi
 
 > **Fork notes (v0.7.0)** - this fork of [MSEndpointMgr/1PhoneMirror](https://github.com/MSEndpointMgr/1PhoneMirror) adds, for Android:
 > pairing by **QR code**, mirroring over a **USB cable**, and **PC control** (mouse = touch, wheel = scroll,
@@ -61,20 +61,20 @@ Grab the MSI or the portable zip from
 or build a portable copy yourself:
 
 ```powershell
-.\package.ps1 -Portable    # -> app\1PhoneMirror.exe
+.\package.ps1 -Portable    # -> app\PhoneMimi.exe
 ```
 
 ## Connecting a phone
 
 ### iPhone / iPad / Mac (AirPlay)
 1. PC and phone on the **same Wi-Fi**.
-2. Phone: **Control Center → Screen Mirroring → 1PhoneMirror**.
+2. Phone: **Control Center → Screen Mirroring → PhoneMimi**.
 3. If PIN pairing is enabled, type the PIN shown on the PC.
 
 ### Android (Wireless Debugging)
 1. Phone: **Settings → Developer options → Wireless debugging** → enable.
 2. Tap **Pair device with pairing code** — note the **IP : port** and **6-digit code**.
-3. PC: in 1PhoneMirror press **A** — the dialog pre-fills your PC's `/24`
+3. PC: in PhoneMimi press **A** — the dialog pre-fills your PC's `/24`
    subnet (e.g. `192.168.0.`); type the phone's last octet, the pair port,
    and the PIN, then **Connect**. The phone shows up via mDNS within a
    second or two and starts mirroring.
@@ -91,13 +91,13 @@ the phone.
 
 | Output | How |
 |--------|-----|
-| **Screenshot (PNG)** | `Ctrl+S`, or click the white circle in the menu/bezel. Save to `Pictures\1PhoneMirror\`, copy to clipboard, and/or open directly in **Snagit Editor** (any combination, toggled in Settings). |
+| **Screenshot (PNG)** | `Ctrl+S`, or click the white circle in the menu/bezel. Save to `Pictures\PhoneMimi\`, copy to clipboard, and/or open directly in **Snagit Editor** (any combination, toggled in Settings). |
 | **Video (MP4)** | `Ctrl+R`, or click the red circle in the menu/bezel. H.264 via libx264, 30 fps by default. |
 | **Animated GIF** | Switch format in Settings → record as above. Auto-downscaled to 480 px wide. |
 | **Delayed recording** | Right-click the record button → **Start in 5 s**. Frosty countdown overlays the screen. |
 | **Timed clip** | Right-click → **Record 5 s / 10 s / 15 s** — auto-stops at the chosen duration. |
 
-All output lands in your `Pictures\1PhoneMirror\` folder; click the folder
+All output lands in your `Pictures\PhoneMimi\` folder; click the folder
 button on the menu (or use the Windows file dialog) to open it.
 
 ## Keyboard shortcuts
@@ -129,7 +129,7 @@ button on the menu (or use the Windows file dialog) to open it.
 |---------|------|------------|
 | **0.6.2 (pre-release)** | 30.09.2026 | AirPlay audio receiver with mute/unmute control and pause-safe mirroring. Pending validation before the Winget submission. |
 | **0.6.1** | 30.09.2026 | Webcam startup now **fails safe**: invalid camera buffers stop capture with an error instead of crashing the app, and a failed webcam launch no longer traps the app into auto-reopening the same bad camera on next start. The first click on an inactive window now works for bezel interactions such as drag and close. |
-| **0.6.0** | 29.08.2026 | The installer and application are now **digitally signed** with Azure Trusted Signing (Public Trust), so Windows SmartScreen and Defender recognise 1PhoneMirror as coming from a verified publisher instead of an unknown one. Every bundled executable and DLL is signed and timestamped. |
+| **0.6.0** | 29.08.2026 | The installer and application are now **digitally signed** with Azure Trusted Signing (Public Trust), so Windows SmartScreen and Defender recognise PhoneMimi as coming from a verified publisher instead of an unknown one. Every bundled executable and DLL is signed and timestamped. |
 | **0.5.2** | 27.08.2026 | New **Statistics** drawer (`T`) — anonymous iOS/Android session, screenshot, annotation, OCR and recording counts, plus a scrollable event log and one-click CSV export. Screenshots can now be **resized to an exact height in cm** (with a print-quality DPI tag so they stay sharp when pasted into Word/PowerPoint). |
 | **0.5.1** | 01.06.2026 | Bezel side buttons: action button, better sizing & visibility. |
 | **0.5.0** | 21.05.2026 | **Webcam drawer** (`W`) — a landscape camera panel that slides out of the phone's bottom bezel, matching the log panel's drawer style. Lists Media Foundation cameras (right-click the bottom `W` button to pick one), live preview at the camera's native resolution, optional horizontal mirror. Screenshots (`Ctrl+S`) and screen recordings (`Ctrl+R`) capture the phone + webcam as one framed composite — WYSIWYG. In-drawer **screenshot button** (left) saves the webcam frame on its own (`<date> <time> Webcam.png`) and right-edge **camera-switch dots** flip between connected cameras. Crash-guard skips webcam auto-start after a failed launch so a bad camera can't lock the app. Version-history panel (`V`) scrollbar is now click-draggable. |
@@ -165,13 +165,13 @@ The full version log is also available in-app — press `V`.
 ## Known app quirks
 
 A few iOS apps interact with AirPlay in unusual ways. These are app-side
-behaviours, not 1PhoneMirror bugs, but they're worth knowing about:
+behaviours, not PhoneMimi bugs, but they're worth knowing about:
 
 - **TripIt** — when launched, allocates a separate landscape `1920×1080`
   AirPlay surface and routes that to the receiver instead of mirroring
   the on-phone view. The result is a small "second-monitor" canvas that
   doesn't match what you see on the phone and isn't interactive.
-  1PhoneMirror keeps the phone frame stable across this canvas switch
+  PhoneMimi keeps the phone frame stable across this canvas switch
   (no auto-rotate to landscape) and letterboxes the surface inside the
   phone screen rect, but the content is whatever TripIt chose to send.
 
@@ -215,7 +215,7 @@ the GitHub Releases API.
 
 ## License
 
-1PhoneMirror is licensed under **GPL-3.0** — see [LICENSE](LICENSE).
+PhoneMimi is licensed under **GPL-3.0** — see [LICENSE](LICENSE).
 
 ### Third-party components
 

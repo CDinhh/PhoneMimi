@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(1PhoneMirror VERSION 0.7.0 LANGUAGES C CXX)
+project(PhoneMimi VERSION 0.7.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -108,9 +108,9 @@ if(ENABLE_ANDROID)
 endif()
 
 # --- Target ---
-add_executable(1PhoneMirror ${CORE_SOURCES})
+add_executable(PhoneMimi ${CORE_SOURCES})
 
-target_include_directories(1PhoneMirror PRIVATE
+target_include_directories(PhoneMimi PRIVATE
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/lib
     ${AVCODEC_INCLUDE_DIR}
@@ -118,13 +118,13 @@ target_include_directories(1PhoneMirror PRIVATE
 
 # Derive C++ version macros from the single source of truth (project()).
 # Keeps OPM_VERSION_* in sync with package version automatically.
-target_compile_definitions(1PhoneMirror PRIVATE
+target_compile_definitions(PhoneMimi PRIVATE
     OPM_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
     OPM_VERSION_MINOR=${PROJECT_VERSION_MINOR}
     OPM_VERSION_PATCH=${PROJECT_VERSION_PATCH}
 )
 
-target_link_libraries(1PhoneMirror PRIVATE
+target_link_libraries(PhoneMimi PRIVATE
     ${AVCODEC_LIBRARY}
     ${AVFORMAT_LIBRARY}
     ${AVUTIL_LIBRARY}
@@ -138,59 +138,59 @@ target_link_libraries(1PhoneMirror PRIVATE
 )
 
 if(ENABLE_AIRPLAY)
-    target_compile_definitions(1PhoneMirror PRIVATE ENABLE_AIRPLAY=1)
+    target_compile_definitions(PhoneMimi PRIVATE ENABLE_AIRPLAY=1)
     if(WIN32)
-        target_link_libraries(1PhoneMirror PRIVATE iphlpapi)
+        target_link_libraries(PhoneMimi PRIVATE iphlpapi)
     endif()
 endif()
 
 if(ENABLE_MIRACAST AND WIN32)
-    target_compile_definitions(1PhoneMirror PRIVATE ENABLE_MIRACAST=1)
+    target_compile_definitions(PhoneMimi PRIVATE ENABLE_MIRACAST=1)
     # Only needs WinRT for WiFi Direct (no D3D11/DXGI — uses FFmpeg for decode)
-    target_link_libraries(1PhoneMirror PRIVATE
+    target_link_libraries(PhoneMimi PRIVATE
         windowsapp.lib
         RuntimeObject.lib
     )
 endif()
 
 if(ENABLE_CAST)
-    target_compile_definitions(1PhoneMirror PRIVATE ENABLE_CAST=1)
-    target_include_directories(1PhoneMirror PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_definitions(PhoneMimi PRIVATE ENABLE_CAST=1)
+    target_include_directories(PhoneMimi PRIVATE ${CMAKE_SOURCE_DIR}/src)
 endif()
 
 if(ENABLE_ANDROID)
-    target_compile_definitions(1PhoneMirror PRIVATE ENABLE_ANDROID=1)
+    target_compile_definitions(PhoneMimi PRIVATE ENABLE_ANDROID=1)
 endif()
 
 if(ENABLE_WEBCAM AND WIN32)
-    target_compile_definitions(1PhoneMirror PRIVATE ENABLE_WEBCAM=1)
+    target_compile_definitions(PhoneMimi PRIVATE ENABLE_WEBCAM=1)
     # Media Foundation libs are part of the Windows SDK — no vcpkg dep.
-    target_link_libraries(1PhoneMirror PRIVATE mf mfplat mfreadwrite mfuuid shlwapi)
+    target_link_libraries(PhoneMimi PRIVATE mf mfplat mfreadwrite mfuuid shlwapi)
 endif()
 
 if(WIN32)
-    target_link_libraries(1PhoneMirror PRIVATE ws2_32 winhttp)
+    target_link_libraries(PhoneMimi PRIVATE ws2_32 winhttp)
     # WindowsApp.lib provides the C++/WinRT runtime exports used by the
     # OCR copy feature (Windows.Media.Ocr). Linked unconditionally on
     # Windows so it's available even when ENABLE_MIRACAST is OFF.
-    target_link_libraries(1PhoneMirror PRIVATE windowsapp.lib)
-    target_compile_definitions(1PhoneMirror PRIVATE NOMINMAX)
+    target_link_libraries(PhoneMimi PRIVATE windowsapp.lib)
+    target_compile_definitions(PhoneMimi PRIVATE NOMINMAX)
     # Embed app manifest for DPI awareness (disable auto-generated manifest to avoid duplicate)
-    target_sources(1PhoneMirror PRIVATE resources/1phonemirror.rc)
-    set_target_properties(1PhoneMirror PROPERTIES LINK_FLAGS "/MANIFEST:NO /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup")
+    target_sources(PhoneMimi PRIVATE resources/phonemimi.rc)
+    set_target_properties(PhoneMimi PROPERTIES LINK_FLAGS "/MANIFEST:NO /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup")
 endif()
 
 # --- Install ---
-install(TARGETS 1PhoneMirror RUNTIME DESTINATION bin)
+install(TARGETS PhoneMimi RUNTIME DESTINATION bin)
 
 # Copy icon PNGs to build output directory
-add_custom_command(TARGET 1PhoneMirror POST_BUILD
+add_custom_command(TARGET PhoneMimi POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_SOURCE_DIR}/apple_icon.png"
-        "$<TARGET_FILE_DIR:1PhoneMirror>/apple_icon.png"
+        "$<TARGET_FILE_DIR:PhoneMimi>/apple_icon.png"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_SOURCE_DIR}/android_icon.png"
-        "$<TARGET_FILE_DIR:1PhoneMirror>/android_icon.png"
+        "$<TARGET_FILE_DIR:PhoneMimi>/android_icon.png"
 )
 
 # Stage the vendored runtime helpers (adb + scrcpy-server.jar) next to
@@ -199,11 +199,11 @@ add_custom_command(TARGET 1PhoneMirror POST_BUILD
 # harvests the whole build/<Config> folder into the MSI, so this single
 # copy keeps both `cmake --build` and `package.ps1` correct.
 if (ENABLE_ANDROID AND EXISTS "${CMAKE_SOURCE_DIR}/tools")
-    add_custom_command(TARGET 1PhoneMirror POST_BUILD
+    add_custom_command(TARGET PhoneMimi POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_SOURCE_DIR}/tools"
-            "$<TARGET_FILE_DIR:1PhoneMirror>/tools"
-        COMMENT "Staging tools/ (adb, scrcpy-server.jar) into $<TARGET_FILE_DIR:1PhoneMirror>"
+            "$<TARGET_FILE_DIR:PhoneMimi>/tools"
+        COMMENT "Staging tools/ (adb, scrcpy-server.jar) into $<TARGET_FILE_DIR:PhoneMimi>"
     )
 elseif (ENABLE_ANDROID)
     message(WARNING

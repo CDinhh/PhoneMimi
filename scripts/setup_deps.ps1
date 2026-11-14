@@ -1,4 +1,4 @@
-# 1PhoneMirror Windows Dependency Setup
+# PhoneMimi Windows Dependency Setup
 # Run this script to install all build dependencies via vcpkg
 
 param(
@@ -9,7 +9,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "=== 1PhoneMirror Dependency Setup ===" -ForegroundColor Cyan
+Write-Host "=== PhoneMimi Dependency Setup ===" -ForegroundColor Cyan
 
 # --- 1. Install vcpkg if not present ---
 if (-not $SkipVcpkg) {
@@ -111,7 +111,7 @@ if ($cmakePath) {
 Write-Host "`n=== Setup Complete ===" -ForegroundColor Cyan
 Write-Host @"
 
-To build 1PhoneMirror:
+To build PhoneMimi:
 
   mkdir build && cd build
   cmake .. -DCMAKE_TOOLCHAIN_FILE="$VcpkgRoot/scripts/buildsystems/vcpkg.cmake"
@@ -119,6 +119,6 @@ To build 1PhoneMirror:
 
 To run:
 
-  .\Release\1phonemirror.exe --name "My PC"
+  .\Release\phonemimi.exe --name "My PC"
 
 "@

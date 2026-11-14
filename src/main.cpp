@@ -21,7 +21,7 @@
 #include <tlhelp32.h>
 #pragma comment(lib, "dbghelp.lib")
 
-// Detect and terminate any leftover 1PhoneMirror.exe process from a previous
+// Detect and terminate any leftover PhoneMimi.exe process from a previous
 // run that crashed without releasing its sockets or its Bonjour registration.
 // Without this, the new instance fails to (re)bind ports 7000/7100 and the
 // iPhone's AirPlay picker keeps showing the stale advertisement, so screen
@@ -37,12 +37,12 @@ static void kill_stale_instances() {
     if (Process32FirstW(snap, &pe)) {
         do {
             if (pe.th32ProcessID == self_pid) continue;
-            if (_wcsicmp(pe.szExeFile, L"1PhoneMirror.exe") != 0) continue;
+            if (_wcsicmp(pe.szExeFile, L"PhoneMimi.exe") != 0) continue;
 
             HANDLE hp = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE,
                                     FALSE, pe.th32ProcessID);
             if (!hp) continue;
-            std::cerr << "[Startup] Found stale 1PhoneMirror process pid="
+            std::cerr << "[Startup] Found stale PhoneMimi process pid="
                       << pe.th32ProcessID << ", terminating...\n";
             if (TerminateProcess(hp, 1)) {
                 // Wait briefly for the OS to release sockets and the mDNS
@@ -66,7 +66,7 @@ static void kill_stale_instances() {
 
 // Write a minidump and log a one-line summary on any unhandled SEH crash so
 // post-mortem analysis can pinpoint the failing thread/address. Dumps go to
-// %LOCALAPPDATA%\1PhoneMirror\Crashes\crash_<pid>_<ts>.dmp .
+// %LOCALAPPDATA%\PhoneMimi\Crashes\crash_<pid>_<ts>.dmp .
 static LONG WINAPI om_unhandled_filter(EXCEPTION_POINTERS* info) {
     if (info && info->ExceptionRecord) {
         std::cerr << "[CRASH] code=0x" << std::hex
@@ -81,10 +81,10 @@ static LONG WINAPI om_unhandled_filter(EXCEPTION_POINTERS* info) {
         return EXCEPTION_EXECUTE_HANDLER;
     }
     char dir[MAX_PATH];
-    std::snprintf(dir, sizeof(dir), "%s\\1PhoneMirror\\Crashes", base);
+    std::snprintf(dir, sizeof(dir), "%s\\PhoneMimi\\Crashes", base);
     CreateDirectoryA(base, nullptr);
     char parent[MAX_PATH];
-    std::snprintf(parent, sizeof(parent), "%s\\1PhoneMirror", base);
+    std::snprintf(parent, sizeof(parent), "%s\\PhoneMimi", base);
     CreateDirectoryA(parent, nullptr);
     CreateDirectoryA(dir, nullptr);
 
@@ -120,7 +120,7 @@ static bool confirm_user_action(const char* message, const char* title) {
                        MB_YESNO | MB_ICONQUESTION) == IDYES;
 }
 
-// Check if 1PhoneMirror firewall rules exist, offer to create them if not
+// Check if PhoneMimi firewall rules exist, offer to create them if not
 static void check_firewall_rules() {
     // Query for our TCP rule using netsh
     STARTUPINFOA si{};
@@ -129,7 +129,7 @@ static void check_firewall_rules() {
     si.wShowWindow = SW_HIDE;
     PROCESS_INFORMATION pi{};
 
-    char cmd[] = "netsh advfirewall firewall show rule name=\"1PhoneMirror (TCP)\"";
+    char cmd[] = "netsh advfirewall firewall show rule name=\"PhoneMimi (TCP)\"";
     if (!CreateProcessA(nullptr, cmd, nullptr, nullptr, FALSE,
                         CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
         return; // Can't check, skip
@@ -146,10 +146,10 @@ static void check_firewall_rules() {
     }
 
     int mbResult = MessageBoxA(nullptr,
-        "No firewall rules found for 1PhoneMirror.\n\n"
+        "No firewall rules found for PhoneMimi.\n\n"
         "AirPlay/Cast devices on the network won't be able to connect without them.\n\n"
         "Would you like to create firewall rules now? (requires admin)",
-        "1PhoneMirror - Firewall Setup", MB_YESNO | MB_ICONQUESTION);
+        "PhoneMimi - Firewall Setup", MB_YESNO | MB_ICONQUESTION);
 
     if (mbResult != IDYES) {
         std::cout << "[Firewall] Skipped by user.\n";
@@ -162,11 +162,11 @@ static void check_firewall_rules() {
     GetModuleFileNameA(nullptr, exe_path, MAX_PATH);
 
     std::string netsh_cmd =
-        "/C netsh advfirewall firewall add rule name=\"1PhoneMirror (TCP)\" "
+        "/C netsh advfirewall firewall add rule name=\"PhoneMimi (TCP)\" "
         "dir=in action=allow protocol=TCP localport=7000,7100 profile=any "
-        "&& netsh advfirewall firewall add rule name=\"1PhoneMirror (UDP)\" "
+        "&& netsh advfirewall firewall add rule name=\"PhoneMimi (UDP)\" "
         "dir=in action=allow protocol=UDP localport=5353,7010,7011 profile=any "
-        "&& netsh advfirewall firewall add rule name=\"1PhoneMirror (App)\" "
+        "&& netsh advfirewall firewall add rule name=\"PhoneMimi (App)\" "
         "dir=in action=allow program=\"" + std::string(exe_path) + "\" "
         "profile=any enable=yes";
 
@@ -179,7 +179,7 @@ static void check_firewall_rules() {
 
         // Verify it worked
         PROCESS_INFORMATION pi2{};
-        char verify[] = "netsh advfirewall firewall show rule name=\"1PhoneMirror (TCP)\"";
+        char verify[] = "netsh advfirewall firewall show rule name=\"PhoneMimi (TCP)\"";
         if (CreateProcessA(nullptr, verify, nullptr, nullptr, FALSE,
                            CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi2)) {
             WaitForSingleObject(pi2.hProcess, 5000);
@@ -195,9 +195,9 @@ static void check_firewall_rules() {
         }
     } else {
         std::cout << "[Firewall] Admin access denied. You can add rules manually:\n"
-                  << "  netsh advfirewall firewall add rule name=\"1PhoneMirror (TCP)\" "
+                  << "  netsh advfirewall firewall add rule name=\"PhoneMimi (TCP)\" "
                   << "dir=in action=allow protocol=TCP localport=7000,7100 profile=any\n"
-                  << "  netsh advfirewall firewall add rule name=\"1PhoneMirror (UDP)\" "
+                  << "  netsh advfirewall firewall add rule name=\"PhoneMimi (UDP)\" "
                   << "dir=in action=allow protocol=UDP localport=5353,7010,7011 profile=any\n\n";
     }
 }
@@ -206,7 +206,7 @@ static void check_firewall_rules() {
 void print_usage(const char* argv0) {
     std::cout << "Usage: " << argv0 << " [options]\n\n"
               << "Options:\n"
-              << "  --name <name>      Display name (default: 1PhoneMirror)\n"
+              << "  --name <name>      Display name (default: PhoneMimi)\n"
               << "  --width <pixels>   Window width (default: 1280)\n"
               << "  --height <pixels>  Window height (default: 720)\n"
               << "  --no-airplay       Disable AirPlay (iOS) receiver\n"
@@ -215,7 +215,7 @@ void print_usage(const char* argv0) {
               << "  --airplay-pin      Require on-screen PIN for AirPlay (managed iOS)\n"
               << "\nAdministrative / cleanup (explicit opt-in only):\n"
               << "  --cleanup-stale                   Terminate a stale prior instance (requires confirmation on Windows)\n"
-              << "  --setup-firewall                  Create 1PhoneMirror firewall rules (admin required)\n"
+              << "  --setup-firewall                  Create PhoneMimi firewall rules (admin required)\n"
               << "  --cleanup-adb-on-shutdown         Kill adb.exe during shutdown so ports are released\n"
               << "  --force-exit-on-timeout           Force exit after shutdown timeout (not recommended)\n"
               << "\nAndroid (scrcpy) options:\n"
@@ -395,17 +395,17 @@ int main(int argc, char* argv[]) {
 #ifdef _WIN32
     if (config.cleanup_stale_instances) {
         if (confirm_user_action(
-                "A previous 1PhoneMirror instance may still be holding network ports.\n\n"
+                "A previous PhoneMimi instance may still be holding network ports.\n\n"
                 "Do you want to close it and continue?",
-                "1PhoneMirror - Cleanup previous instance")) {
+                "PhoneMimi - Cleanup previous instance")) {
             kill_stale_instances();
         }
     }
     if (config.setup_firewall) {
         if (confirm_user_action(
-                "1PhoneMirror needs to create firewall rules so AirPlay and Android devices can connect.\n\n"
+                "PhoneMimi needs to create firewall rules so AirPlay and Android devices can connect.\n\n"
                 "This requires administrator permissions. Continue?",
-                "1PhoneMirror - Firewall setup")) {
+                "PhoneMimi - Firewall setup")) {
             check_firewall_rules();
         }
     }
@@ -424,14 +424,14 @@ int main(int argc, char* argv[]) {
             char buf[MAX_COMPUTERNAME_LENGTH + 1] = {};
             DWORD len = sizeof(buf);
             if (GetComputerNameA(buf, &len) && len > 0) {
-                config.name = std::string("1PhoneMirror by ") + buf;
+                config.name = std::string("PhoneMimi by ") + buf;
             }
 #endif
         }
     }
 
     if (!app.init(config)) {
-        std::cerr << "Failed to initialize 1PhoneMirror\n";
+        std::cerr << "Failed to initialize PhoneMimi\n";
         return 1;
     }
 

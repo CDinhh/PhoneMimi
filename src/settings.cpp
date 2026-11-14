@@ -16,7 +16,7 @@ static std::string settings_dir() {
 #ifdef _WIN32
     char appdata[MAX_PATH];
     if (SUCCEEDED(SHGetFolderPathA(nullptr, CSIDL_APPDATA, nullptr, 0, appdata))) {
-        return std::string(appdata) + "\\1PhoneMirror";
+        return std::string(appdata) + "\\PhoneMimi";
     }
 #endif
     return ".";

@@ -443,7 +443,7 @@ private:
     BtnRect settings_resize_plus_btn_;
     BtnRect settings_toggle_save_original_btn_;
     // Session-only toggle: when on, std::cout is mirrored to
-    // <screenshot_dir>/1PhoneMirror.log. Reset to false on every launch
+    // <screenshot_dir>/PhoneMimi.log. Reset to false on every launch
     // (intentionally NOT persisted to settings.ini).
     BtnRect settings_toggle_log_btn_;
     bool log_to_file_session_ = false;
