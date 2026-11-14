@@ -601,25 +601,82 @@ static bool in_rect(int px, int py, int rx, int ry, int rw, int rh) {
 // How far the physical side buttons stick out of a phone drawn `phone_w` wide.
 static int side_btn_margin(int phone_w) { return std::max(3, phone_w / 90); }
 
-static void fill_circle(SDL_Renderer* r, int cx, int cy, int radius) {
-    for (int dy = -radius; dy <= radius; dy++) {
-        int dx = (int)std::sqrt(radius * radius - dy * dy);
-        SDL_RenderDrawLine(r, cx - dx, cy + dy, cx + dx, cy + dy);
+// Anti-aliased discs, cached per size: white, alpha = pixel coverage
+// (4x4 supersampled). `size` px wide, edge at `edge` px from the centre.
+static SDL_Texture* aa_disc(SDL_Renderer* r, int size, float edge) {
+    static std::unordered_map<long long, SDL_Texture*> cache;
+    long long key = (long long)size * 100000 + (long long)(edge * 16);
+    auto it = cache.find(key);
+    if (it != cache.end()) return it->second;
+    if (cache.size() > 400) {   // window resized a lot: drop stale sizes
+        for (auto& kv : cache) SDL_DestroyTexture(kv.second);
+        cache.clear();
     }
+    std::vector<uint8_t> px((size_t)size * size * 4);
+    float c = size / 2.0f;
+    for (int y = 0; y < size; ++y)
+        for (int x = 0; x < size; ++x) {
+            int in = 0;
+            for (int sy = 0; sy < 4; ++sy)
+                for (int sx = 0; sx < 4; ++sx) {
+                    float dx = x + (sx + 0.5f) / 4 - c, dy = y + (sy + 0.5f) / 4 - c;
+                    if (dx * dx + dy * dy <= edge * edge) ++in;
+                }
+            uint8_t* p = &px[((size_t)y * size + x) * 4];
+            p[0] = p[1] = p[2] = 255;
+            p[3] = (uint8_t)(in * 255 / 16);
+        }
+    SDL_Texture* t = SDL_CreateTexture(r, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, size, size);
+    if (t) {
+        SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
+        SDL_UpdateTexture(t, nullptr, px.data(), size * 4);
+    }
+    cache[key] = t;
+    return t;
 }
 
+// Tints `t` with the current draw colour. With BLENDMODE_NONE the colour
+// counts as opaque (only the AA edge blends), matching SDL_RenderFillRect.
+static void tint_like_draw_color(SDL_Renderer* r, SDL_Texture* t) {
+    uint8_t cr, cg, cb, ca;
+    SDL_GetRenderDrawColor(r, &cr, &cg, &cb, &ca);
+    SDL_BlendMode bm = SDL_BLENDMODE_BLEND;
+    SDL_GetRenderDrawBlendMode(r, &bm);
+    SDL_SetTextureColorMod(t, cr, cg, cb);
+    SDL_SetTextureAlphaMod(t, bm == SDL_BLENDMODE_NONE ? 255 : ca);
+}
+
+static void fill_circle(SDL_Renderer* r, int cx, int cy, int radius) {
+    if (radius <= 0) { SDL_RenderDrawPoint(r, cx, cy); return; }
+    int size = radius * 2 + 1;
+    SDL_Texture* t = aa_disc(r, size, radius + 0.5f);
+    if (!t) return;
+    tint_like_draw_color(r, t);
+    SDL_Rect d = {cx - radius, cy - radius, size, size};
+    SDL_RenderCopy(r, t, nullptr, &d);
+}
+
+// Rounded rectangle from non-overlapping pieces (safe with translucent
+// colours) and anti-aliased corners.
 static void fill_round_rect(SDL_Renderer* r, int x, int y, int w, int h, int rad) {
+    if (w <= 0 || h <= 0) return;
     rad = std::max(0, std::min(rad, std::min(w, h) / 2));
-    SDL_Rect a = {x + rad, y, w - rad * 2, h};
-    SDL_RenderFillRect(r, &a);
-    SDL_Rect b = {x, y + rad, rad, h - rad * 2};
-    SDL_RenderFillRect(r, &b);
-    SDL_Rect d = {x + w - rad, y + rad, rad, h - rad * 2};
-    SDL_RenderFillRect(r, &d);
-    fill_circle(r, x + rad, y + rad, rad);
-    fill_circle(r, x + w - rad - 1, y + rad, rad);
-    fill_circle(r, x + rad, y + h - rad - 1, rad);
-    fill_circle(r, x + w - rad - 1, y + h - rad - 1, rad);
+    if (rad == 0) { SDL_Rect a = {x, y, w, h}; SDL_RenderFillRect(r, &a); return; }
+    SDL_Rect top = {x + rad, y, w - rad * 2, rad};
+    SDL_Rect mid = {x, y + rad, w, h - rad * 2};
+    SDL_Rect bot = {x + rad, y + h - rad, w - rad * 2, rad};
+    if (top.w > 0) { SDL_RenderFillRect(r, &top); SDL_RenderFillRect(r, &bot); }
+    if (mid.h > 0) SDL_RenderFillRect(r, &mid);
+    SDL_Texture* t = aa_disc(r, rad * 2, (float)rad);
+    if (!t) return;
+    tint_like_draw_color(r, t);
+    SDL_Rect s0 = {0, 0, rad, rad}, s1 = {rad, 0, rad, rad}, s2 = {0, rad, rad, rad}, s3 = {rad, rad, rad, rad};
+    SDL_Rect d0 = {x, y, rad, rad}, d1 = {x + w - rad, y, rad, rad};
+    SDL_Rect d2 = {x, y + h - rad, rad, rad}, d3 = {x + w - rad, y + h - rad, rad, rad};
+    SDL_RenderCopy(r, t, &s0, &d0);
+    SDL_RenderCopy(r, t, &s1, &d1);
+    SDL_RenderCopy(r, t, &s2, &d2);
+    SDL_RenderCopy(r, t, &s3, &d3);
 }
 
 #ifdef _WIN32
@@ -5751,10 +5808,16 @@ void Renderer::draw_settings_panel() {
         return y;
     };
     // Label on the left, switch on the right; the whole row is clickable.
+    // Row label, shrunk if needed so it never runs under the control.
+    auto row_label = [&](const char* label, int y, int control_w) {
+        int avail = card_w - inner * 3 - control_w;
+        text(label, fit_text_px(sdl_renderer_, label, label_h, avail), card_x + inner,
+             y + row_h / 2, 230, 234, 240, 0);
+    };
     auto toggle = [&](const char* label, bool on) -> BtnRect {
         int y = begin_row(true);
-        text(label, label_h, card_x + inner, y + row_h / 2, 230, 234, 240, 0);
         int sh = label_h + 8, sw = sh * 12 / 7;
+        row_label(label, y, sw);
         ui_toggle_(card_x + card_w - inner - sw, y + (row_h - sh) / 2, sh, on,
                    std::string("settings.") + label);
         return BtnRect{card_x, y, card_w, row_h};
@@ -5762,8 +5825,8 @@ void Renderer::draw_settings_panel() {
     // Label on the left, a segmented choice on the right.
     auto segment = [&](const char* label, const char* const* opts, int n, int selected, BtnRect* out) {
         int y = begin_row(false);
-        text(label, label_h, card_x + inner, y + row_h / 2, 230, 234, 240, 0);
         int ph = label_h + 10, pw = n * (label_h * 3 + 8) + 6;
+        row_label(label, y, pw);
         ui_segment_(card_x + card_w - inner - pw, y + (row_h - ph) / 2, pw, ph, opts, n, selected,
                     std::string("settings.") + label, out, label_h * 9 / 10, text_alpha);
     };
@@ -5772,8 +5835,8 @@ void Renderer::draw_settings_panel() {
     auto swatches = [&](const char* label, const uint8_t (*cols)[3], int n, int selected,
                         int id_base, const uint8_t* ring) {
         int y = begin_row(false);
-        text(label, label_h, card_x + inner, y + row_h / 2, 230, 234, 240, 0);
         int d = label_h + 8, sg = std::max(8, d / 2);
+        row_label(label, y, n * d + (n - 1) * sg + 8);
         int x0 = card_x + card_w - inner - (n * d + (n - 1) * sg);
         SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
         for (int i = 0; i < n; ++i) {
@@ -5820,21 +5883,21 @@ void Renderer::draw_settings_panel() {
             acc_cols[i][0] = kAccents[i].r; acc_cols[i][1] = kAccents[i].g; acc_cols[i][2] = kAccents[i].b;
         }
         swatches("Accent colour", acc_cols, 6, settings_.accent_color, 100, ring);
-        settings_toggle_compname_btn_ = toggle("Show computer name (after restart)", settings_.use_computer_name);
-        settings_toggle_log_btn_      = toggle("Save a log file this session", log_to_file_session_);
+        settings_toggle_compname_btn_ = toggle("Computer name as receiver name", settings_.use_computer_name);
+        settings_toggle_log_btn_      = toggle("Save a log file", log_to_file_session_);
     } else if (tab == 1) {
-        settings_toggle_usb_btn_     = toggle("Connect USB phones automatically", settings_.android_auto_usb);
-        settings_toggle_kbd_btn_     = toggle("Type on the phone from this keyboard", settings_.android_keyboard_on);
-        settings_toggle_paste_btn_   = toggle("Paste typed text (Vietnamese keyboards)", settings_.android_type_via_paste);
-        settings_toggle_softkbd_btn_ = toggle("Hide the phone's own keyboard", settings_.android_hide_soft_keyboard);
-        settings_toggle_scroff_btn_  = toggle("Turn the phone screen off", settings_.android_screen_off);
+        settings_toggle_usb_btn_     = toggle("Auto-connect over USB", settings_.android_auto_usb);
+        settings_toggle_kbd_btn_     = toggle("Type from this keyboard", settings_.android_keyboard_on);
+        settings_toggle_paste_btn_   = toggle("Type by pasting", settings_.android_type_via_paste);
+        settings_toggle_softkbd_btn_ = toggle("Hide the phone keyboard", settings_.android_hide_soft_keyboard);
+        settings_toggle_scroff_btn_  = toggle("Phone screen off", settings_.android_screen_off);
         static const char* const res_opts[3] = {"Max", "1920", "1280"};
         static const int res_vals[3] = {0, 1920, 1280};
-        segment("Android resolution", res_opts, 3,
+        segment("Resolution", res_opts, 3,
                 index_of(res_vals, 3, settings_.android_max_size), settings_seg_res_btns_);
         static const char* const fps_opts[3] = {"Max", "60", "30"};
         static const int fps_vals[3] = {0, 60, 30};
-        segment("Android frame rate", fps_opts, 3,
+        segment("Frame rate", fps_opts, 3,
                 index_of(fps_vals, 3, settings_.android_max_fps), settings_seg_fps_btns_);
         static const char* const ios_opts[2] = {"60", "30"};
         static const int ios_vals[2] = {60, 30};
@@ -5843,9 +5906,9 @@ void Renderer::draw_settings_panel() {
         text("Applies the next time a phone connects.", note_h, card_x + inner,
              cy + rows * row_h + gap + note_h / 2, 132, 132, 142, 0);
     } else if (tab == 2) {
-        settings_toggle_save_btn_   = toggle("Save screenshots to Pictures", settings_.screenshot_save_to_folder);
-        settings_toggle_clip_btn_   = toggle("Copy screenshots to clipboard", settings_.screenshot_copy_to_clipboard);
-        settings_toggle_snagit_btn_ = toggle("Open screenshots in Snagit", settings_.screenshot_open_in_snagit);
+        settings_toggle_save_btn_   = toggle("Save to Pictures", settings_.screenshot_save_to_folder);
+        settings_toggle_clip_btn_   = toggle("Copy to clipboard", settings_.screenshot_copy_to_clipboard);
+        settings_toggle_snagit_btn_ = toggle("Open in Snagit", settings_.screenshot_open_in_snagit);
         static const char* const fmt_opts[2] = {"MP4", "GIF"};
         BtnRect fmt[2];
         segment("Recording format", fmt_opts, 2, settings_.record_format, fmt);
@@ -5877,7 +5940,7 @@ void Renderer::draw_settings_panel() {
         }
     } else {
         settings_toggle_webcam_mirror_btn_ = toggle("Mirror the webcam", settings_.webcam_mirror_h);
-        settings_toggle_webcam_record_btn_ = toggle("Show the webcam in recordings", settings_.webcam_include_in_recording);
+        settings_toggle_webcam_record_btn_ = toggle("Webcam in recordings", settings_.webcam_include_in_recording);
     }
 
     SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
