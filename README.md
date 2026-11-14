@@ -16,9 +16,11 @@ window. Nothing to install on the phone.
 
 ## Download
 
-The latest portable build is in the [`app/`](app) folder of this repository:
-download it and run `PhoneMimi.exe`. Builds are unsigned, so SmartScreen may
-ask you to confirm (*More info > Run anyway*).
+Get the latest version from [Releases](https://github.com/CDinhh/PhoneMimi/releases/latest):
+the **portable zip** (unzip and run `PhoneMimi.exe`) or the **MSI** installer.
+The same portable build is also in the [`app/`](app) folder of this repository.
+Builds are unsigned, so SmartScreen may ask you to confirm
+(*More info > Run anyway*).
 
 ## Connecting a phone
 
