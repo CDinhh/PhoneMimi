@@ -228,8 +228,7 @@ static int load_embedded_fonts() {
         }
     }
     g_jakarta_ok = ok - (g_lucide_ok ? 1 : 0) == 4;
-    std::cout << "[Renderer] Embedded fonts: " << ok << "/5
-";
+    std::cout << "[Renderer] Embedded fonts: " << ok << "/5\n";
     return ok;
 }
 
