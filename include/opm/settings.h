@@ -50,6 +50,10 @@ struct Settings {
     // Applied immediately when toggled and again at startup.
     bool always_on_top = false;
 
+    // UI accent colour: index into the renderer's palette (0 blue, 1 sky,
+    // 2 violet, 3 green, 4 pink, 5 orange).
+    int accent_color = 0;
+
     // Start mirroring an Android phone as soon as it is plugged in over
     // USB (debugging must already be allowed on the phone).
     bool android_auto_usb = true;

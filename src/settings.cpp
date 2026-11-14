@@ -96,6 +96,7 @@ Settings Settings::load() {
             else if (k == "android_max_size")             s.android_max_size             = std::clamp(std::stoi(v), 0, 8192);
             else if (k == "android_max_fps")              s.android_max_fps              = std::clamp(std::stoi(v), 0, 240);
             else if (k == "android_bitrate_mbps")         s.android_bitrate_mbps         = std::clamp(std::stoi(v), 1, 100);
+            else if (k == "accent_color")                 s.accent_color                 = std::clamp(std::stoi(v), 0, 5);
             else if (k == "airplay_max_fps")              s.airplay_max_fps              = std::clamp(std::stoi(v), 15, 60);
             else if (k == "record_format")                s.record_format                = std::clamp(std::stoi(v), 0, 1);
             else if (k == "record_max_duration_sec")      s.record_max_duration_sec      = std::max(0, std::stoi(v));
@@ -135,6 +136,7 @@ bool Settings::save() const {
     f << "android_max_fps="             << android_max_fps << "\n";
     f << "android_bitrate_mbps="        << android_bitrate_mbps << "\n";
     f << "airplay_max_fps="             << airplay_max_fps << "\n";
+    f << "accent_color="                << accent_color << "\n";
     f << "record_max_duration_sec="     << record_max_duration_sec << "\n";
     f << "record_fps_mp4="              << record_fps_mp4 << "\n";
     f << "record_fps_gif="              << record_fps_gif << "\n";

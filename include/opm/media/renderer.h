@@ -9,6 +9,7 @@
 #include <chrono>
 #include <functional>
 #include <mutex>
+#include <unordered_map>
 #include <string>
 #include <vector>
 
@@ -456,6 +457,15 @@ private:
     // Tabbed layout: 0 General, 1 Phone, 2 Capture, 3 Webcam.
     int settings_tab_ = 0;
     BtnRect settings_tab_btns_[4];
+    // Panel kit (Settings, Add Android): see renderer.cpp "Panel kit".
+    struct UiSpring { float x = 0.0f, v = 0.0f; uint32_t t = 0; bool init = false; };
+    std::unordered_map<std::string, UiSpring> ui_springs_;
+    float ui_spring_(const std::string& key, float target);
+    void ui_shell_(int x, int y, int w, int h, int rad);
+    void ui_round_btn_(const BtnRect& b, wchar_t icon, bool hover);
+    void ui_toggle_(int x, int y, int h, bool on, const std::string& key);
+    void ui_segment_(int x, int y, int w, int h, const char* const* opts, int n, int selected,
+                     const std::string& key, BtnRect* out, int font_px, uint8_t alpha);
     BtnRect settings_close_btn_;
     BtnRect settings_toggle_usb_btn_;
     BtnRect settings_toggle_softkbd_btn_;

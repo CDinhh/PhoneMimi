@@ -685,6 +685,21 @@ constexpr wchar_t ArrowRight = 0xE04D, Camera = 0xE068, ChevronDown = 0xE071,
                   Undo2 = 0xE2A0, Check = 0xE070, Play = 0xE13F, Pause = 0xE131;
 }
 
+// Accent colours (Settings > General > Accent colour). `dark_ink`: text on a
+// filled accent surface is dark instead of white.
+struct Accent { uint8_t r, g, b; uint8_t lr, lg, lb; bool dark_ink; };
+static const Accent kAccents[6] = {
+    {0x25, 0x63, 0xEB, 0x4F, 0x8E, 0xF7, false},  // Blue (default)
+    {0x0E, 0xA5, 0xE9, 0x38, 0xBD, 0xF8, true},   // Sky
+    {0x7C, 0x3A, 0xED, 0x9F, 0x67, 0xFF, false},  // Violet
+    {0x22, 0xC5, 0x5E, 0x4A, 0xDE, 0x80, true},   // Green
+    {0xDB, 0x27, 0x77, 0xF0, 0x52, 0x9C, false},  // Pink
+    {0xF0, 0x7F, 0x2E, 0xFF, 0x9C, 0x55, true},   // Orange
+};
+static const Accent& accent_for(int index) {
+    return kAccents[(index >= 0 && index < 6) ? index : 0];
+}
+
 // Measures cached text (ink width, line height).
 static void measure_text_c(SDL_Renderer* r, const std::string& s, int px, int* w, int* h,
                            int weight = 500) {
@@ -710,6 +725,15 @@ static int draw_text_c(SDL_Renderer* r, const std::string& s, int px,
     SDL_Rect d = {dx, y, c.w, c.h};
     SDL_RenderCopy(r, c.tex, nullptr, &d);
     return c.h;
+}
+
+// draw_text_c with `y_mid` as the vertical centre of the line.
+static void draw_text_mid(SDL_Renderer* r, const std::string& s, int px,
+                          uint8_t cr, uint8_t cg, uint8_t cb, uint8_t ca,
+                          int x, int y_mid, int align, int weight = 500) {
+    int w = 0, h = 0;
+    measure_text_c(r, s, px, &w, &h, weight);
+    draw_text_c(r, s, px, cr, cg, cb, ca, x, y_mid - h / 2, align, weight);
 }
 
 // Largest font size <= px at which `s` fits in max_w.
@@ -2380,7 +2404,10 @@ void Renderer::run() {
                                         {110,  84,  46},  // Bronze
                                     };
                                     int idx = sw.first;
-                                    if (idx >= 0 && idx < (int)(sizeof(presets) / sizeof(presets[0]))) {
+                                    if (idx >= 100) {
+                                        settings_.accent_color = std::clamp(idx - 100, 0, 5);
+                                        settings_.save();
+                                    } else if (idx >= 0 && idx < (int)(sizeof(presets) / sizeof(presets[0]))) {
                                         apply_bezel_color(presets[idx][0], presets[idx][1], presets[idx][2]);
                                     }
                                     break;
@@ -5454,6 +5481,98 @@ void Renderer::apply_bezel_color(uint8_t r, uint8_t g, uint8_t b) {
     phone_frame_.generate(sdl_renderer_, gw, gh);
 }
 
+// ----------------------------------------------------------------------------
+// Panel kit shared by Settings and Add Android (approved mockup, 15.11.2026):
+// double-bezel shell, switches, segmented choices, fields, pill buttons.
+// ----------------------------------------------------------------------------
+
+float Renderer::ui_spring_(const std::string& key, float target) {
+    UiSpring& sp = ui_springs_[key];
+    uint32_t now = SDL_GetTicks();
+    if (!sp.init) { sp.init = true; sp.x = target; sp.v = 0.0f; sp.t = now; return target; }
+    float dt = std::min(0.033f, (now - sp.t) / 1000.0f);
+    sp.t = now;
+    // Slightly under-damped: settles in ~0.4 s with a small overshoot.
+    const float k = 220.0f, c = 22.0f;
+    sp.v += (k * (target - sp.x) - c * sp.v) * dt;
+    sp.x += sp.v * dt;
+    if (std::abs(target - sp.x) < 0.002f && std::abs(sp.v) < 0.02f) { sp.x = target; sp.v = 0.0f; }
+    return sp.x;
+}
+
+void Renderer::ui_shell_(int x, int y, int w, int h, int rad) {
+    SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_NONE);
+    SDL_SetRenderDrawColor(sdl_renderer_, 44, 48, 56, 255);       // hairline
+    fill_round_rect(sdl_renderer_, x - 7, y - 7, w + 14, h + 14, rad + 7);
+    SDL_SetRenderDrawColor(sdl_renderer_, 27, 30, 37, 255);       // outer shell
+    fill_round_rect(sdl_renderer_, x - 6, y - 6, w + 12, h + 12, rad + 6);
+    SDL_SetRenderDrawColor(sdl_renderer_, 22, 25, 31, 255);       // inner core
+    fill_round_rect(sdl_renderer_, x, y, w, h, rad);
+    SDL_SetRenderDrawColor(sdl_renderer_, 46, 50, 60, 255);       // top highlight
+    SDL_RenderDrawLine(sdl_renderer_, x + rad, y, x + w - 1 - rad, y);
+}
+
+void Renderer::ui_round_btn_(const BtnRect& b, wchar_t icon, bool hover) {
+    SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(sdl_renderer_, 255, 255, 255, hover ? 30 : 16);
+    fill_circle(sdl_renderer_, b.x + b.w / 2, b.y + b.h / 2, b.w / 2);
+    draw_glyph(sdl_renderer_, icon, b.x + b.w / 2, b.y + b.h / 2, b.w / 2,
+               201, 209, 220, hover ? 255 : 220);
+}
+
+void Renderer::ui_toggle_(int x, int y, int h, bool on, const std::string& key) {
+    const Accent& ac = accent_for(settings_.accent_color);
+    int w = h * 12 / 7;
+    float t = ui_spring_(key, on ? 1.0f : 0.0f);
+    float tc = std::clamp(t, 0.0f, 1.0f);
+    auto mix = [&](int a, int b) { return (uint8_t)(a + (b - a) * tc); };
+    SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_NONE);
+    SDL_SetRenderDrawColor(sdl_renderer_, mix(40, ac.lr), mix(44, ac.lg), mix(52, ac.lb), 255);
+    fill_round_rect(sdl_renderer_, x, y, w, h, h / 2);
+    SDL_SetRenderDrawColor(sdl_renderer_, mix(11, ac.r), mix(13, ac.g), mix(18, ac.b), 255);
+    fill_round_rect(sdl_renderer_, x + 1, y + 1, w - 2, h - 2, (h - 2) / 2);
+    int d = h - 6;
+    int kx = x + 3 + (int)std::lround(t * (w - 6 - d)) + d / 2, ky = y + h / 2;
+    SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(sdl_renderer_, 0, 0, 0, 90);
+    fill_circle(sdl_renderer_, kx, ky + 1, d / 2 + 1);
+    SDL_SetRenderDrawColor(sdl_renderer_, 242, 244, 247, 255);
+    fill_circle(sdl_renderer_, kx, ky, d / 2);
+}
+
+void Renderer::ui_segment_(int x, int y, int w, int h, const char* const* opts, int n,
+                           int selected, const std::string& key, BtnRect* out,
+                           int font_px, uint8_t alpha) {
+    int mx, my;
+    SDL_GetMouseState(&mx, &my);
+    SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_NONE);
+    SDL_SetRenderDrawColor(sdl_renderer_, 34, 38, 46, 255);
+    fill_round_rect(sdl_renderer_, x, y, w, h, h / 2);
+    SDL_SetRenderDrawColor(sdl_renderer_, 11, 13, 18, 255);
+    fill_round_rect(sdl_renderer_, x + 1, y + 1, w - 2, h - 2, (h - 2) / 2);
+    int seg_w = (w - 6) / n, ph = h - 6;
+    for (int i = 0; i < n; ++i) {
+        out[i] = {x + 3 + i * seg_w, y, seg_w, h};
+        if (i != selected && in_rect(mx, my, out[i].x, y, seg_w, h)) {
+            SDL_SetRenderDrawColor(sdl_renderer_, 22, 25, 31, 255);
+            fill_round_rect(sdl_renderer_, out[i].x, y + 3, seg_w, ph, ph / 2);
+        }
+    }
+    if (selected >= 0) {
+        float pos = ui_spring_(key, (float)selected);
+        int px = x + 3 + (int)std::lround(pos * seg_w);
+        SDL_SetRenderDrawColor(sdl_renderer_, 52, 58, 71, 255);
+        fill_round_rect(sdl_renderer_, px, y + 3, seg_w, ph, ph / 2);
+        SDL_SetRenderDrawColor(sdl_renderer_, 76, 82, 96, 255);
+        SDL_RenderDrawLine(sdl_renderer_, px + ph / 2, y + 3, px + seg_w - 1 - ph / 2, y + 3);
+    }
+    for (int i = 0; i < n; ++i) {
+        bool sel = (i == selected);
+        draw_text_mid(sdl_renderer_, opts[i], font_px, sel ? 255 : 138, sel ? 255 : 148,
+                      sel ? 255 : 166, alpha, out[i].x + seg_w / 2, y + h / 2, 1, 600);
+    }
+}
+
 void Renderer::draw_settings_panel() {
     if (frame_dst_w_ == 0) return;
 
@@ -5484,7 +5603,7 @@ void Renderer::draw_settings_panel() {
     int title_h = std::max(15, uw / 20);
     int label_h = std::max(11, uw / 30);
     int note_h  = std::max(10, label_h * 4 / 5);
-    int row_pad = std::max(7,  label_h * 2 / 3);
+    int row_pad = std::max(8,  label_h * 3 / 4);
     int row_h   = label_h + row_pad * 2;
     int tabs_h  = row_h - 2;
 
@@ -5501,7 +5620,7 @@ void Renderer::draw_settings_panel() {
     settings_tab_ = std::clamp(settings_tab_, 0, 3);
     const int tab = settings_tab_;
     const bool resize_on = settings_.screenshot_resize_enabled;
-    const int rows = tab == 0 ? 3 : tab == 1 ? 8 : tab == 2 ? (resize_on ? 7 : 5) : 2;
+    const int rows = tab == 0 ? 4 : tab == 1 ? 8 : tab == 2 ? (resize_on ? 7 : 5) : 2;
     int total_h = pad + title_h + gap + tabs_h + gap + rows * row_h
                 + (tab == 1 ? gap + note_h : 0) + pad;
 
@@ -5529,117 +5648,103 @@ void Renderer::draw_settings_panel() {
     int mx, my;
     SDL_GetMouseState(&mx, &my);
 
+    const Accent& ac = accent_for(settings_.accent_color);
+
     // Surfaces are opaque (BLENDMODE_NONE) so the pieces a rounded rect is
     // built from cannot alpha-compound where they overlap.
-    SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_NONE);
     auto surface = [&](int x, int y, int w, int h, int rad, uint8_t r, uint8_t g, uint8_t b) {
+        SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_NONE);
         SDL_SetRenderDrawColor(sdl_renderer_, r, g, b, 255);
         fill_round_rect(sdl_renderer_, x, y, w, h, rad);
     };
     // align: 0 left, 1 centred, 2 right (x is the anchor); y_mid is the
     // vertical centre of the text.
     auto text = [&](const std::string& s, int font_h, int x, int y_mid,
-                    uint8_t r, uint8_t g, uint8_t b, int align) {
-        int tw = 0, th = 0;
-        SDL_Texture* tex = make_text_texture(sdl_renderer_, s, font_h, r, g, b, &tw, &th);
-        if (!tex) return;
-        int tx = align == 1 ? x - tw / 2 : align == 2 ? x - tw : x;
-        SDL_Rect dst = {tx, y_mid - th / 2, tw, th};
-        SDL_SetTextureAlphaMod(tex, text_alpha);
-        SDL_RenderCopy(sdl_renderer_, tex, nullptr, &dst);
-        SDL_DestroyTexture(tex);
+                    uint8_t r, uint8_t g, uint8_t b, int align, int weight = 500) {
+        draw_text_mid(sdl_renderer_, s, font_h, r, g, b, text_alpha, x, y_mid, align, weight);
     };
 
-    // Panel: hairline border + body.
-    int pr = std::max(10, pad * 4 / 5);
-    surface(panel_x - 1, panel_y - 1, panel_w + 2, total_h + 2, pr + 1, 64, 64, 72);
-    surface(panel_x, panel_y, panel_w, total_h, pr, 22, 22, 26);
+    int pr = std::max(14, pad);
+    ui_shell_(panel_x, panel_y, panel_w, total_h, pr);
 
     int cy = panel_y + pad;
 
-    // Header: title + close button.
-    text("Settings", title_h, panel_x + pad, cy + title_h / 2, 242, 242, 247, 0);
+    // Header: title + round close button.
+    text("Settings", title_h, panel_x + pad, cy + title_h / 2, 244, 246, 248, 0, 700);
     {
-        int sz = title_h;
-        settings_close_btn_ = {panel_x + panel_w - pad - sz, cy, sz, sz};
-        bool hov = in_rect(mx, my, settings_close_btn_.x - 4, settings_close_btn_.y - 4, sz + 8, sz + 8);
-        if (hov) surface(settings_close_btn_.x - 4, settings_close_btn_.y - 4, sz + 8, sz + 8,
-                         (sz + 8) / 2, 52, 52, 60);
-        uint8_t c = hov ? 255 : 170;
-        SDL_SetRenderDrawColor(sdl_renderer_, c, c, c, 255);
-        int in = sz / 4;
-        int x0 = settings_close_btn_.x + in, y0 = cy + in, x1 = settings_close_btn_.x + sz - in, y1 = cy + sz - in;
-        for (int t = 0; t <= 1; ++t) {
-            SDL_RenderDrawLine(sdl_renderer_, x0 + t, y0, x1 + t, y1);
-            SDL_RenderDrawLine(sdl_renderer_, x1 + t, y0, x0 + t, y1);
-        }
+        int sz = title_h + 8;
+        settings_close_btn_ = {panel_x + panel_w - pad - sz, cy + title_h / 2 - sz / 2, sz, sz};
+        ui_round_btn_(settings_close_btn_, lucide::X, in_rect(mx, my, settings_close_btn_.x,
+                                                              settings_close_btn_.y, sz, sz));
     }
     cy += title_h + gap;
 
-    // Tab bar: a pill track with the selected tab raised.
+    // Tab bar: segmented track with a sliding pill.
     {
         static const char* const names[4] = {"General", "Phone", "Capture", "Webcam"};
-        int track_x = panel_x + pad, track_w = panel_w - pad * 2;
-        surface(track_x, cy, track_w, tabs_h, tabs_h / 2, 36, 36, 42);
-        int tab_w = track_w / 4;
-        for (int i = 0; i < 4; ++i) {
-            int tx = track_x + i * tab_w;
-            settings_tab_btns_[i] = {tx, cy, tab_w, tabs_h};
-            bool sel = (i == tab);
-            bool hov = in_rect(mx, my, tx, cy, tab_w, tabs_h);
-            if (sel)      surface(tx + 2, cy + 2, tab_w - 4, tabs_h - 4, (tabs_h - 4) / 2, 80, 80, 94);
-            else if (hov) surface(tx + 2, cy + 2, tab_w - 4, tabs_h - 4, (tabs_h - 4) / 2, 46, 46, 54);
-            uint8_t c = sel ? 255 : 162;
-            text(names[i], label_h, tx + tab_w / 2, cy + tabs_h / 2, c, c, (uint8_t)(sel ? 255 : 172), 1);
-        }
+        ui_segment_(panel_x + pad, cy, panel_w - pad * 2, tabs_h, names, 4, tab,
+                    "settings.tabs", settings_tab_btns_, label_h, text_alpha);
     }
     cy += tabs_h + gap;
 
-    // Card holding the rows of the current tab.
+    // Recessed card holding the rows of the current tab.
     const int card_x = panel_x + pad, card_w = panel_w - pad * 2;
     const int inner = std::max(10, pad * 3 / 4);
-    surface(card_x, cy, card_w, rows * row_h, std::max(8, pr * 2 / 3), 32, 32, 38);
+    const int card_r = std::max(10, pr * 3 / 4);
+    surface(card_x - 1, cy - 1, card_w + 2, rows * row_h + 2, card_r + 1, 30, 33, 40);
+    surface(card_x, cy, card_w, rows * row_h, card_r, 17, 19, 24);
 
     int row_i = 0;
-    // Starts a row: hover highlight + separator. Returns the row's top y.
+    // Starts a row (hover highlight). Returns the row's top y.
     auto begin_row = [&](bool hoverable) {
         int y = cy + row_i * row_h;
         if (hoverable && in_rect(mx, my, card_x, y, card_w, row_h))
-            surface(card_x + 3, y + 2, card_w - 6, row_h - 4, 6, 42, 42, 50);
-        if (row_i > 0) {
-            SDL_SetRenderDrawColor(sdl_renderer_, 48, 48, 56, 255);
-            SDL_RenderDrawLine(sdl_renderer_, card_x + inner, y, card_x + card_w - inner, y);
-        }
+            surface(card_x + 3, y + 3, card_w - 6, row_h - 6, std::max(4, card_r - 3), 24, 27, 33);
         ++row_i;
         return y;
     };
     // Label on the left, switch on the right; the whole row is clickable.
     auto toggle = [&](const char* label, bool on) -> BtnRect {
         int y = begin_row(true);
-        text(label, label_h, card_x + inner, y + row_h / 2, 228, 228, 233, 0);
-        int sh = label_h + 6, sw = sh * 9 / 5;
-        int sx = card_x + card_w - inner - sw, sy = y + (row_h - sh) / 2;
-        if (on) surface(sx, sy, sw, sh, sh / 2, 52, 199, 112);
-        else    surface(sx, sy, sw, sh, sh / 2, 70, 70, 80);
-        SDL_SetRenderDrawColor(sdl_renderer_, 250, 250, 252, 255);
-        fill_circle(sdl_renderer_, on ? sx + sw - sh / 2 : sx + sh / 2, sy + sh / 2, sh / 2 - 2);
+        text(label, label_h, card_x + inner, y + row_h / 2, 230, 234, 240, 0);
+        int sh = label_h + 8, sw = sh * 12 / 7;
+        ui_toggle_(card_x + card_w - inner - sw, y + (row_h - sh) / 2, sh, on,
+                   std::string("settings.") + label);
         return BtnRect{card_x, y, card_w, row_h};
     };
     // Label on the left, a segmented choice on the right.
     auto segment = [&](const char* label, const char* const* opts, int n, int selected, BtnRect* out) {
         int y = begin_row(false);
-        text(label, label_h, card_x + inner, y + row_h / 2, 228, 228, 233, 0);
-        int ph = label_h + 8, pw = label_h * 7 / 2 + 6;
-        int x0 = card_x + card_w - inner - n * pw, py = y + (row_h - ph) / 2;
-        surface(x0 - 2, py - 2, n * pw + 4, ph + 4, (ph + 4) / 2, 22, 22, 26);
+        text(label, label_h, card_x + inner, y + row_h / 2, 230, 234, 240, 0);
+        int ph = label_h + 10, pw = n * (label_h * 3 + 8) + 6;
+        ui_segment_(card_x + card_w - inner - pw, y + (row_h - ph) / 2, pw, ph, opts, n, selected,
+                    std::string("settings.") + label, out, label_h * 9 / 10, text_alpha);
+    };
+    // A row of round colour swatches; the selected one gets a `ring`.
+    // Click ids: id_base + index (see the Settings click handler).
+    auto swatches = [&](const char* label, const uint8_t (*cols)[3], int n, int selected,
+                        int id_base, const uint8_t* ring) {
+        int y = begin_row(false);
+        text(label, label_h, card_x + inner, y + row_h / 2, 230, 234, 240, 0);
+        int d = label_h + 8, sg = std::max(8, d / 2);
+        int x0 = card_x + card_w - inner - (n * d + (n - 1) * sg);
+        SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
         for (int i = 0; i < n; ++i) {
-            int px = x0 + i * pw;
-            bool sel = (i == selected);
-            if (sel)                                   surface(px, py, pw, ph, ph / 2, 86, 86, 100);
-            else if (in_rect(mx, my, px, py, pw, ph))  surface(px, py, pw, ph, ph / 2, 44, 44, 52);
-            uint8_t c = sel ? 255 : 165;
-            text(opts[i], label_h, px + pw / 2, py + ph / 2, c, c, (uint8_t)(sel ? 255 : 175), 1);
-            out[i] = {px, py, pw, ph};
+            int scx = x0 + i * (d + sg) + d / 2, scy = y + row_h / 2;
+            bool hov = in_rect(mx, my, scx - d / 2, scy - d / 2, d, d);
+            int rr = d / 2 + (hov ? 1 : 0);
+            if (i == selected) {
+                SDL_SetRenderDrawColor(sdl_renderer_, ring[0], ring[1], ring[2], 255);
+                fill_circle(sdl_renderer_, scx, scy, rr + 4);
+                SDL_SetRenderDrawColor(sdl_renderer_, 17, 19, 24, 255);
+                fill_circle(sdl_renderer_, scx, scy, rr + 2);
+            } else {
+                SDL_SetRenderDrawColor(sdl_renderer_, 255, 255, 255, 30);
+                fill_circle(sdl_renderer_, scx, scy, rr + 1);
+            }
+            SDL_SetRenderDrawColor(sdl_renderer_, cols[i][0], cols[i][1], cols[i][2], 255);
+            fill_circle(sdl_renderer_, scx, scy, rr);
+            settings_swatch_btns_.push_back({id_base + i, BtnRect{scx - d / 2, scy - d / 2, d, d}});
         }
     };
     auto index_of = [](const int* vals, int n, int v) {
@@ -5648,7 +5753,7 @@ void Renderer::draw_settings_panel() {
     };
 
     if (tab == 0) {
-        // Frame colour: round swatches, white ring on the current one.
+        // Frame colour and accent colour swatches.
         static const uint8_t presets[6][3] = {
             { 28,  28,  30},  // Dark titanium (default)
             { 90,  90,  95},  // Graphite
@@ -5657,22 +5762,17 @@ void Renderer::draw_settings_panel() {
             { 80,  34,  34},  // Deep red
             {110,  84,  46},  // Bronze
         };
-        int y = begin_row(false);
-        text("Frame colour", label_h, card_x + inner, y + row_h / 2, 228, 228, 233, 0);
-        int d = label_h + 8, sg = std::max(5, d / 4);
-        int x0 = card_x + card_w - inner - (6 * d + 5 * sg);
+        int frame_sel = -1;
+        for (int i = 0; i < 6; ++i)
+            if (presets[i][0] == settings_.bezel_r && presets[i][1] == settings_.bezel_g &&
+                presets[i][2] == settings_.bezel_b) frame_sel = i;
+        const uint8_t ring[3] = {ac.lr, ac.lg, ac.lb};
+        swatches("Frame colour", presets, 6, frame_sel, 0, ring);
+        uint8_t acc_cols[6][3];
         for (int i = 0; i < 6; ++i) {
-            int scx = x0 + i * (d + sg) + d / 2, scy = y + row_h / 2;
-            bool selected = (presets[i][0] == settings_.bezel_r &&
-                             presets[i][1] == settings_.bezel_g &&
-                             presets[i][2] == settings_.bezel_b);
-            if (selected) SDL_SetRenderDrawColor(sdl_renderer_, 250, 250, 252, 255);
-            else          SDL_SetRenderDrawColor(sdl_renderer_, 78, 78, 88, 255);
-            fill_circle(sdl_renderer_, scx, scy, d / 2);
-            SDL_SetRenderDrawColor(sdl_renderer_, presets[i][0], presets[i][1], presets[i][2], 255);
-            fill_circle(sdl_renderer_, scx, scy, d / 2 - (selected ? 2 : 1));
-            settings_swatch_btns_.push_back({i, BtnRect{scx - d / 2, scy - d / 2, d, d}});
+            acc_cols[i][0] = kAccents[i].r; acc_cols[i][1] = kAccents[i].g; acc_cols[i][2] = kAccents[i].b;
         }
+        swatches("Accent colour", acc_cols, 6, settings_.accent_color, 100, ring);
         settings_toggle_compname_btn_ = toggle("Show computer name (after restart)", settings_.use_computer_name);
         settings_toggle_log_btn_      = toggle("Save a log file this session", log_to_file_session_);
     } else if (tab == 1) {
@@ -5714,9 +5814,9 @@ void Renderer::draw_settings_panel() {
             int minus_x = plus_x - val_w - bs;
             auto step = [&](const char* sym, int bx) -> BtnRect {
                 bool hov = in_rect(mx, my, bx, by, bs, bs);
-                if (hov) surface(bx, by, bs, bs, bs / 2, 86, 86, 100);
-                else     surface(bx, by, bs, bs, bs / 2, 58, 58, 68);
-                text(sym, label_h, bx + bs / 2, by + bs / 2, 240, 240, 245, 1);
+                if (hov) surface(bx, by, bs, bs, bs / 2, 52, 58, 71);
+                else     surface(bx, by, bs, bs, bs / 2, 34, 38, 46);
+                text(sym, label_h, bx + bs / 2, by + bs / 2, 240, 242, 246, 1, 600);
                 return BtnRect{bx, by, bs, bs};
             };
             settings_resize_minus_btn_ = step("-", minus_x);
