@@ -247,7 +247,19 @@ private:
     bool resizing_ = false;
     int resize_start_gx_ = 0, resize_start_gy_ = 0;
     int resize_start_w_ = 0, resize_start_h_ = 0;
-    BtnRect resize_grip_;
+    BtnRect resize_grip_;            // bottom-right corner
+    BtnRect resize_grip_tl_;         // top-left corner
+    bool resize_from_tl_ = false;    // dragging the top-left grip
+    int resize_win_x_ = 0, resize_win_y_ = 0, resize_win_w_ = 0, resize_win_h_ = 0;
+
+    // Physical buttons sticking out of the frame:
+    // 0 action/mute, 1 volume up, 2 volume down (left side), 3 power (right).
+    BtnRect side_btn_[4];            // the protruding part, window coords
+    BtnRect side_btn_hit_[4];        // click target (reaches into the bezel)
+    void layout_side_buttons_();
+    void draw_side_buttons_(std::string& hover_key, std::string& hover_text,
+                            int& hover_ax, int& hover_ay);
+    void press_side_button_(int index);
 
     // Source picker (small numbered dots in bottom bezel)
     GetSourcesFn get_sources_fn_;

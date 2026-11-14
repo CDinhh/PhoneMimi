@@ -53,6 +53,19 @@ public:
     // keep overlays from scaling up on iPad-shaped frames).
     bool is_tablet() const { return is_tablet_; }
 
+    // Physical side buttons (portrait phones only), in frame-local pixels.
+    // The texture paints their base on the chassis edge; the renderer draws
+    // the part that sticks out, in button_color().
+    struct SideButton { int y = 0, h = 0; };
+    bool has_side_buttons() const { return has_side_buttons_; }
+    SideButton side_action() const { return side_action_; }
+    SideButton side_volume_up() const { return side_vol_up_; }
+    SideButton side_volume_down() const { return side_vol_dn_; }
+    SideButton side_power() const { return side_power_; }
+    void button_color(uint8_t* r, uint8_t* g, uint8_t* b) const {
+        *r = btn_r_; *g = btn_g_; *b = btn_b_;
+    }
+
     // Composite screenshot: video frame pixels + phone frame with alpha.
     // Returns RGBA pixel buffer (caller must free with delete[]).
     // out_w/out_h receive the image dimensions.
@@ -88,6 +101,9 @@ private:
     int bezel_bottom_ = 0;
     int corner_radius_ = 0;
     bool is_tablet_ = false;
+    bool has_side_buttons_ = false;
+    SideButton side_action_, side_vol_up_, side_vol_dn_, side_power_;
+    uint8_t btn_r_ = 56, btn_g_ = 56, btn_b_ = 58;
 };
 
 } // namespace opm::media

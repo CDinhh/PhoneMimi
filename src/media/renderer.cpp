@@ -561,6 +561,9 @@ static bool in_rect(int px, int py, int rx, int ry, int rw, int rh) {
     return px >= rx && px < rx + rw && py >= ry && py < ry + rh;
 }
 
+// How far the physical side buttons stick out of a phone drawn `phone_w` wide.
+static int side_btn_margin(int phone_w) { return std::max(3, phone_w / 90); }
+
 static void fill_circle(SDL_Renderer* r, int cx, int cy, int radius) {
     for (int dy = -radius; dy <= radius; dy++) {
         int dx = (int)std::sqrt(radius * radius - dy * dy);
@@ -1727,9 +1730,13 @@ void Renderer::run() {
                                in_rect(mx, my, bezel_screenshot_btn_.x, bezel_screenshot_btn_.y,
                                        bezel_screenshot_btn_.w, bezel_screenshot_btn_.h)) {
                         target = "screenshot";
-                    } else if (phone_frame_enabled_ && resize_grip_.w > 0 &&
-                               in_rect(mx, my, resize_grip_.x, resize_grip_.y,
-                                       resize_grip_.w, resize_grip_.h)) {
+                    } else if (phone_frame_enabled_ &&
+                               ((resize_grip_.w > 0 &&
+                                 in_rect(mx, my, resize_grip_.x, resize_grip_.y,
+                                         resize_grip_.w, resize_grip_.h)) ||
+                                (resize_grip_tl_.w > 0 &&
+                                 in_rect(mx, my, resize_grip_tl_.x, resize_grip_tl_.y,
+                                         resize_grip_tl_.w, resize_grip_tl_.h)))) {
                         target = "resize";
                     } else if (webcam_btn_.w > 0 &&
                                in_rect(mx, my, webcam_btn_.x, webcam_btn_.y,
@@ -1916,11 +1923,31 @@ void Renderer::run() {
                         // Click outside menu dismisses it; fall through.
                     }
 
-                    // Resize grip (check first, highest priority corner)
-                    if (phone_frame_enabled_ && resize_grip_.w > 0 &&
+                    // Physical side buttons (power / volume / mute).
+                    if (phone_frame_enabled_) {
+                        int pressed = -1;
+                        for (int i = 0; i < 4; ++i) {
+                            const BtnRect& b = side_btn_hit_[i];
+                            if (b.w > 0 && in_rect(mx, my, b.x, b.y, b.w, b.h)) pressed = i;
+                        }
+                        if (pressed >= 0) {
+                            press_side_button_(pressed);
+                            break;
+                        }
+                    }
+
+                    // Resize grips (check first, highest priority corners)
+                    bool grip_br = resize_grip_.w > 0 &&
                         in_rect(mx, my, resize_grip_.x, resize_grip_.y,
-                                resize_grip_.w, resize_grip_.h)) {
+                                resize_grip_.w, resize_grip_.h);
+                    bool grip_tl = resize_grip_tl_.w > 0 &&
+                        in_rect(mx, my, resize_grip_tl_.x, resize_grip_tl_.y,
+                                resize_grip_tl_.w, resize_grip_tl_.h);
+                    if (phone_frame_enabled_ && (grip_br || grip_tl)) {
                         resizing_ = true;
+                        resize_from_tl_ = grip_tl;
+                        SDL_GetWindowPosition(window_, &resize_win_x_, &resize_win_y_);
+                        SDL_GetWindowSize(window_, &resize_win_w_, &resize_win_h_);
                         SDL_GetGlobalMouseState(&resize_start_gx_, &resize_start_gy_);
                         // Track the PHONE width as the starting size, not the
                         // whole window width — the window includes the log
@@ -2543,7 +2570,10 @@ void Renderer::run() {
                     float aspect = (float)phone_frame_.frame_height() /
                                    (float)phone_frame_.frame_width();
                     // resize_start_w_/h_ are the PHONE dimensions at drag start.
-                    int new_phone_w = std::max(200, resize_start_w_ + (gmx - resize_start_gx_));
+                    // Dragging the top-left grip towards the top-left grows the phone.
+                    int drag_dx = resize_from_tl_ ? (resize_start_gx_ - gmx)
+                                                  : (gmx - resize_start_gx_);
+                    int new_phone_w = std::max(200, resize_start_w_ + drag_dx);
                     SDL_DisplayMode dm;
                     SDL_GetCurrentDisplayMode(0, &dm);
                     int new_phone_h = (int)(new_phone_w * aspect);
@@ -2567,7 +2597,17 @@ void Renderer::run() {
                         margin = std::max(4, new_phone_h / 40);
                         needed_w = new_phone_w + std::max(0, drawer_w - margin);
                     }
+                    if (phone_frame_.has_side_buttons())
+                        needed_w += side_btn_margin(new_phone_w) * 2;
                     SDL_SetWindowSize(window_, needed_w, new_phone_h);
+                    if (resize_from_tl_) {
+                        // Keep the bottom-right corner where it was.
+                        int cw, ch;
+                        SDL_GetWindowSize(window_, &cw, &ch);
+                        SDL_SetWindowPosition(window_,
+                                              resize_win_x_ + resize_win_w_ - cw,
+                                              resize_win_y_ + resize_win_h_ - ch);
+                    }
                     window_shape_set_ = false;
                 }
                 break;
@@ -2828,6 +2868,8 @@ void Renderer::render_frame() {
         record_btn_ = {};
         mute_btn_ = {};
         resize_grip_ = {};
+        resize_grip_tl_ = {};
+        for (int i = 0; i < 4; ++i) side_btn_[i] = side_btn_hit_[i] = {};
         frame_dst_w_ = 0;
         SDL_RenderPresent(sdl_renderer_);
         return;
@@ -2923,7 +2965,9 @@ void Renderer::render_frame() {
     // (and its drawers) inside the fullscreen rect.
     bool is_fullscreen =
         (SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0;
-    int needed_w = frame_dst_w_ + log_panel_w;
+    // Strip on each side of the phone for the buttons that stick out.
+    int side_m = phone_frame_.has_side_buttons() ? side_btn_margin(frame_dst_w_) : 0;
+    int needed_w = frame_dst_w_ + log_panel_w + side_m * 2;
     int webcam_h_delta = webcam_drawer_h - webcam_drawer_h_applied_;
     int needed_h = win_h + webcam_h_delta;
     if (!is_fullscreen && (win_w != needed_w || webcam_h_delta != 0)) {
@@ -2937,13 +2981,14 @@ void Renderer::render_frame() {
 
     if (is_fullscreen) {
         // Centre the phone+drawer block horizontally in the fullscreen rect.
-        frame_dst_x_ = std::max(0, (win_w - needed_w) / 2);
+        frame_dst_x_ = std::max(0, (win_w - needed_w) / 2) + side_m;
     } else {
-        frame_dst_x_ = 0; // Phone at left edge; log panel expands right
+        frame_dst_x_ = side_m; // Phone at left edge; log panel expands right
     }
     // Phone keeps its centred position; the webcam drawer hangs in the
     // newly-grown bottom region of the window.
     frame_dst_y_ = std::max(0, (win_h - webcam_drawer_h - frame_dst_h_) / 2);
+    layout_side_buttons_();
 
     int svx = frame_dst_x_ + (int)std::round(phone_frame_.screen_x() * scale);
     int svy = frame_dst_y_ + (int)std::round(phone_frame_.screen_y() * scale);
@@ -3229,6 +3274,7 @@ void Renderer::render_frame() {
 
     // Phone frame overlay (on top — covers island and panel edges)
     phone_frame_.render(sdl_renderer_, frame_dst_x_, frame_dst_y_, frame_dst_w_, frame_dst_h_);
+    draw_side_buttons_(bezel_hover_key, bezel_hover_text, bezel_hover_ax, bezel_hover_ay);
 
     // Mute control in the left barrel, aligned with the upper volume button.
     mute_btn_ = {};
@@ -3889,45 +3935,45 @@ void Renderer::render_frame() {
         }
     }
 
-    // Resize grip — 3 dots along the phone corner arc
+    // Resize grips — a short arc hugging the top-left and bottom-right
+    // corners of the phone.
     {
         float scale = (float)frame_dst_w_ / phone_frame_.frame_width();
         int cr = std::max(4, (int)(phone_frame_.corner_radius() * scale));
-        // Dot size derived from ui_ref_width() so the grip stays the same
+        // Stroke derived from ui_ref_width() so the grip keeps the same
         // visual weight whether mirroring a phone or a tablet/desktop. The
-        // arc itself still follows the phone frame's actual corner radius.
-        int dot_r = std::max(2, ui_ref_width() / 175);
-        // Arc center is at bottom-right corner inset by corner radius
-        int cx = frame_dst_x_ + frame_dst_w_ - cr;
-        int cy = frame_dst_y_ + frame_dst_h_ - cr;
-        // Place dots just inside the corner arc (radius slightly less than cr)
-        float arc_r = cr - dot_r * 2.5f;
-
-        // Hit-test region covers the corner area
-        resize_grip_ = {cx, cy, cr, cr};
+        // arc itself follows the phone frame's actual corner radius.
+        int stroke_r = std::max(1, ui_ref_width() / 260);
+        float arc_r = cr - stroke_r * 4.0f;
+        float step = std::max(1.0f, 40.0f / std::max(1.0f, arc_r));
 
         int rmx, rmy;
         SDL_GetMouseState(&rmx, &rmy);
-        bool grip_hover = in_rect(rmx, rmy, resize_grip_.x, resize_grip_.y,
-                                   resize_grip_.w, resize_grip_.h);
-        uint8_t ga = grip_hover ? 230 : 140;
-        SDL_SetRenderDrawColor(sdl_renderer_, 220, 220, 220, ga);
-
-        // 3 dots at 15°, 45°, 75° in the bottom-right quadrant
         const float pi = 3.14159265f;
-        float angles[] = {15.0f, 45.0f, 75.0f};
-        for (float deg : angles) {
-            float rad = deg * pi / 180.0f;
-            int dx = cx + (int)(arc_r * cosf(rad));
-            int dy = cy + (int)(arc_r * sinf(rad));
-            fill_circle(sdl_renderer_, dx, dy, dot_r);
-        }
-        if (grip_hover) {
-            bezel_hover_key = "resize";
-            bezel_hover_text = "Drag to resize\nRight-click for menu";
-            bezel_hover_ax = cx - cr / 2;
-            bezel_hover_ay = cy - cr / 2;
-        }
+        // (cx, cy) is the centre of the corner arc; start_deg is where the
+        // corner's quadrant begins (0 = bottom-right, 180 = top-left).
+        auto draw_grip = [&](BtnRect& hit, int cx, int cy, float start_deg) {
+            bool hover = in_rect(rmx, rmy, hit.x, hit.y, hit.w, hit.h);
+            // Opaque greys: the overlapping dots that make up the arc
+            // would add up unevenly with alpha.
+            uint8_t g = hover ? 235 : 135;
+            SDL_SetRenderDrawColor(sdl_renderer_, g, g, (uint8_t)(g + 5), 255);
+            for (float deg = start_deg + 20.0f; deg <= start_deg + 70.0f; deg += step) {
+                float rad = deg * pi / 180.0f;
+                fill_circle(sdl_renderer_, cx + (int)std::lround(arc_r * cosf(rad)),
+                            cy + (int)std::lround(arc_r * sinf(rad)), stroke_r);
+            }
+            if (hover) {
+                bezel_hover_key = "resize";
+                bezel_hover_text = "Drag to resize\nRight-click for menu";
+                bezel_hover_ax = hit.x + hit.w / 2;
+                bezel_hover_ay = hit.y + hit.h / 2;
+            }
+        };
+        resize_grip_ = {frame_dst_x_ + frame_dst_w_ - cr, frame_dst_y_ + frame_dst_h_ - cr, cr, cr};
+        draw_grip(resize_grip_, resize_grip_.x, resize_grip_.y, 0.0f);
+        resize_grip_tl_ = {frame_dst_x_, frame_dst_y_, cr, cr};
+        draw_grip(resize_grip_tl_, frame_dst_x_ + cr, frame_dst_y_ + cr, 180.0f);
     }
 
     // Delayed (1 s) tooltip for any bezel button currently hovered.
@@ -6683,6 +6729,97 @@ void Renderer::draw_android_qr(int svx, int svy, int svw, int svh) {
     }
 }
 
+void Renderer::layout_side_buttons_() {
+    for (int i = 0; i < 4; ++i) side_btn_[i] = side_btn_hit_[i] = {};
+    if (!phone_frame_.has_side_buttons() || frame_dst_w_ <= 0) return;
+
+    float scale = (float)frame_dst_w_ / phone_frame_.frame_width();
+    int m = side_btn_margin(frame_dst_w_);
+    // The click target reaches into the bezel: the visible part is only a
+    // few pixels wide.
+    int grab = std::max(4, (int)(phone_frame_.bezel_left() * scale));
+    auto place = [&](int i, PhoneFrame::SideButton sb, bool right) {
+        int y = frame_dst_y_ + (int)std::round(sb.y * scale);
+        int h = std::max(6, (int)std::round(sb.h * scale));
+        int x = right ? frame_dst_x_ + frame_dst_w_ : frame_dst_x_ - m;
+        side_btn_[i]     = {x, y, m, h};
+        side_btn_hit_[i] = {right ? x - grab : x, y, m + grab, h};
+    };
+    place(0, phone_frame_.side_action(), false);
+    place(1, phone_frame_.side_volume_up(), false);
+    place(2, phone_frame_.side_volume_down(), false);
+    // The log drawer opens flush against the right edge, where the power
+    // button is.
+    if (log_panel_anim_ <= 0.01f) place(3, phone_frame_.side_power(), true);
+}
+
+void Renderer::draw_side_buttons_(std::string& hover_key, std::string& hover_text,
+                                  int& hover_ax, int& hover_ay) {
+    uint8_t br, bg, bb;
+    phone_frame_.button_color(&br, &bg, &bb);
+    const bool android = android_input_active_();
+    static const char* const android_tips[4] = {"Mute", "Volume up", "Volume down", "Power"};
+    static const char* const other_tips[4] = {
+        "Mute PC audio", "Volume: use the phone", "Volume: use the phone", "Power: use the phone"};
+
+    int mx, my;
+    SDL_GetMouseState(&mx, &my);
+    for (int i = 0; i < 4; ++i) {
+        const BtnRect& b = side_btn_[i];
+        if (b.w <= 0) continue;
+        const BtnRect& hit = side_btn_hit_[i];
+        const bool right = (i == 3);
+        const bool hover = in_rect(mx, my, hit.x, hit.y, hit.w, hit.h);
+        auto shade = [&](uint8_t c, int d) { return (uint8_t)std::min(255, std::max(0, c + d)); };
+        const int lift = hover ? 45 : 0;
+
+        // Body: tucked a little under the chassis so only the outer corners
+        // look rounded.
+        const int tuck = std::max(2, b.w / 2);
+        SDL_SetRenderDrawColor(sdl_renderer_, shade(br, lift), shade(bg, lift), shade(bb, lift), 255);
+        fill_round_rect(sdl_renderer_, right ? b.x - tuck : b.x, b.y, b.w + tuck, b.h,
+                        std::max(1, b.w / 2));
+        // Thin highlight on the outer face for a machined-metal look.
+        const int rad = std::max(1, b.w / 2);
+        const int edge_x = right ? b.x + b.w - 1 : b.x;
+        SDL_SetRenderDrawColor(sdl_renderer_, shade(br, lift + 30), shade(bg, lift + 30),
+                               shade(bb, lift + 32), 255);
+        SDL_RenderDrawLine(sdl_renderer_, edge_x, b.y + rad, edge_x, b.y + b.h - 1 - rad);
+
+        if (hover) {
+            hover_key  = std::string("side") + (char)('0' + i);
+            hover_text = android ? android_tips[i] : other_tips[i];
+            hover_ax   = right ? hit.x : hit.x + hit.w;
+            hover_ay   = b.y + b.h / 2;
+        }
+    }
+}
+
+void Renderer::press_side_button_(int index) {
+    if (index < 0 || index > 3) return;
+    if (android_input_active_()) {
+        // KEYCODE_VOLUME_MUTE, VOLUME_UP, VOLUME_DOWN, POWER
+        static const int codes[4] = {164, 24, 25, 26};
+        AndroidInput in;
+        in.kind = AndroidInput::Kind::Key;
+        in.keycode = codes[index];
+        in.action = 0; android_input_fn_(in);
+        in.action = 1; android_input_fn_(in);
+        return;
+    }
+    if (index == 0) {
+        audio_muted_ = !audio_muted_;
+        if (audio_mute_fn_) audio_mute_fn_(audio_muted_);
+        return;
+    }
+    // AirPlay is one-way: nothing to send to an iPhone.
+    if (active_platform_fn_ && !active_platform_fn_().empty()) {
+        toast_text_ = "AirPlay is view-only - use the buttons on the phone";
+        toast_active_ = true;
+        toast_start_ = std::chrono::steady_clock::now();
+    }
+}
+
 bool Renderer::android_input_active_() {
     if (!android_input_fn_ || !active_platform_fn_ || !texture_ || !ever_received_frame_)
         return false;
@@ -9369,6 +9506,19 @@ void Renderer::update_window_shape() {
         frame_dst_x_ + frame_dst_w_ + 1,
         frame_dst_y_ + frame_dst_h_ + 1,
         cr * 2, cr * 2);
+
+    // Side buttons stick out of the phone outline. Each region reaches the
+    // same distance into the body so only its outer corners end up rounded.
+    for (const BtnRect& b : side_btn_) {
+        if (b.w <= 0) continue;
+        HRGN btn_rgn = CreateRoundRectRgn(b.x - (b.x < frame_dst_x_ ? 0 : b.w), b.y,
+                                          b.x + (b.x < frame_dst_x_ ? b.w * 2 : b.w) + 1,
+                                          b.y + b.h + 1, b.w, b.w);
+        if (btn_rgn) {
+            CombineRgn(phone_rgn, phone_rgn, btn_rgn, RGN_OR);
+            DeleteObject(btn_rgn);
+        }
+    }
 
     if (log_panel_anim_ > 0.01f) {
         // Combine phone frame region with log panel region (right side, drawer)

@@ -61,9 +61,10 @@ bool PhoneFrame::generate(SDL_Renderer* renderer, int screen_w, int screen_h) {
     // rather than "tappable button".
     int bezel_luma = (bezel_r_ * 30 + bezel_g_ * 59 + bezel_b_ * 11) / 100;
     int btn_delta  = (bezel_luma < 128) ? 28 : -28;
-    const uint32_t BUTTON_COLOR   = rgba(lighten(bezel_r_, btn_delta),
-                                          lighten(bezel_g_, btn_delta),
-                                          lighten(bezel_b_, btn_delta), 255);
+    btn_r_ = lighten(bezel_r_, btn_delta);
+    btn_g_ = lighten(bezel_g_, btn_delta);
+    btn_b_ = lighten(bezel_b_, btn_delta);
+    const uint32_t BUTTON_COLOR   = rgba(btn_r_, btn_g_, btn_b_, 255);
     const uint32_t SCREEN_BORDER  = rgba(lighten(bezel_r_, -8),
                                           lighten(bezel_g_, -8),
                                           lighten(bezel_b_, -8), 255);
@@ -145,7 +146,8 @@ bool PhoneFrame::generate(SDL_Renderer* renderer, int screen_w, int screen_h) {
     //      * Power: ~28% of screen height, starts ~30% from the top.
     //      * Action: small button above the volume rockers (~3% tall).
     //      * Volume up/down: each ~7% tall, slightly below action.
-    if (!is_tablet && is_portrait) {
+    has_side_buttons_ = !is_tablet && is_portrait;
+    if (has_side_buttons_) {
         int btn_w = std::max(3, bezel_side_ / 4);
 
         // Action button (left side, above volume) — small.
@@ -173,6 +175,11 @@ bool PhoneFrame::generate(SDL_Renderer* renderer, int screen_w, int screen_h) {
         int pwr_y = (vol_dn_y + vol_h) - pwr_h;
         draw_rect(frame_pixels_, frame_w_, frame_h_,
                   frame_w_ - btn_w, pwr_y, btn_w, pwr_h, BUTTON_COLOR);
+
+        side_action_ = {act_y, act_h};
+        side_vol_up_ = {vol_up_y, vol_h};
+        side_vol_dn_ = {vol_dn_y, vol_h};
+        side_power_  = {pwr_y, pwr_h};
     }
 
     // Create SDL texture from pixels
