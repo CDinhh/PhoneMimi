@@ -113,3 +113,10 @@ jobs:
           name: 1PhoneMirror-${{ steps.ver.outputs.version }}-msi-unsigned
           path: dist/1PhoneMirror-${{ steps.ver.outputs.version }}.msi
           retention-days: 14
+
+      - name: Upload portable folder (unsigned)
+        uses: actions/upload-artifact@v4
+        with:
+          name: 1PhoneMirror-${{ steps.ver.outputs.version }}-portable
+          path: dist/stage
+          retention-days: 14
