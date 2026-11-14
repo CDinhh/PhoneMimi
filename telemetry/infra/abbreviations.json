@@ -1,9 +1,0 @@
-{
-  "resourcesResourceGroups": "rg-",
-  "storageStorageAccounts": "st",
-  "webSitesFunctions": "func-",
-  "webServerFarms": "asp-",
-  "insightsComponents": "appi-",
-  "operationalInsightsWorkspaces": "log-",
-  "managedIdentityUserAssignedIdentities": "id-"
-}

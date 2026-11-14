@@ -84,17 +84,36 @@ int spawn_capture(const std::string& exe,
     std::string cmdline = quote_arg(exe);
     for (auto& a : args) { cmdline += ' '; cmdline += quote_arg(a); }
 
-    STARTUPINFOA si{};
-    si.cb = sizeof(si);
-    si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
-    si.wShowWindow = SW_HIDE;
-    si.hStdInput  = in_r;
-    si.hStdOutput = out_w;
-    si.hStdError  = out_w;
+    // Inherit ONLY the two pipe ends. With a plain bInheritHandles=TRUE the
+    // adb daemon forked by the first adb call also inherits our listening
+    // sockets (AirPlay 7000/7100) and keeps them open after we exit, so the
+    // next launch can't receive iPhone connections.
+    HANDLE inherit[2] = { in_r, out_w };
+    SIZE_T attr_size = 0;
+    InitializeProcThreadAttributeList(nullptr, 1, 0, &attr_size);
+    std::vector<char> attr_buf(attr_size);
+    auto* attrs = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attr_buf.data());
+    if (!InitializeProcThreadAttributeList(attrs, 1, 0, &attr_size) ||
+        !UpdateProcThreadAttribute(attrs, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                                   inherit, sizeof(inherit), nullptr, nullptr)) {
+        CloseHandle(in_r); CloseHandle(in_w); CloseHandle(out_r); CloseHandle(out_w);
+        return -1;
+    }
+
+    STARTUPINFOEXA si{};
+    si.StartupInfo.cb = sizeof(si);
+    si.StartupInfo.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+    si.StartupInfo.wShowWindow = SW_HIDE;
+    si.StartupInfo.hStdInput  = in_r;
+    si.StartupInfo.hStdOutput = out_w;
+    si.StartupInfo.hStdError  = out_w;
+    si.lpAttributeList = attrs;
     PROCESS_INFORMATION pi{};
 
     BOOL ok = CreateProcessA(nullptr, cmdline.data(), nullptr, nullptr, TRUE,
-                             CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
+                             CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT,
+                             nullptr, nullptr, &si.StartupInfo, &pi);
+    DeleteProcThreadAttributeList(attrs);
     CloseHandle(in_r);
     CloseHandle(out_w);
     if (!ok) {
