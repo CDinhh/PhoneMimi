@@ -235,7 +235,6 @@ private:
     // pattern as bezel_screenshot_btn_.
     BtnRect record_btn_;
     BtnRect bezel_record_btn_;
-    BtnRect mute_btn_;
     int hover_btn_ = -1; // -1=none, 0=close, 1=screenshot, 2=folder, 3=icon, 4=info, 5=menu, 6=settings
 
     // Island visibility & animation

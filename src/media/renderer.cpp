@@ -673,6 +673,18 @@ static void draw_glyph(SDL_Renderer* r, wchar_t cp, int cx, int cy, int px,
     SDL_RenderCopy(r, c.tex, nullptr, &d);
 }
 
+// Lucide code points (lucide-static 0.469.0, font/info.json).
+namespace lucide {
+constexpr wchar_t ArrowRight = 0xE04D, Camera = 0xE068, ChevronDown = 0xE071,
+                  ChevronRight = 0xE073, ChevronUp = 0xE074, Circle = 0xE07A,
+                  CircleHelp = 0xE082, Folder = 0xE0DC, LoaderCircle = 0xE10D,
+                  Settings = 0xE157, Smartphone = 0xE166, Square = 0xE16A,
+                  Wifi = 0xE1AD, X = 0xE1B1, QrCode = 0xE1DE, Pin = 0xE258,
+                  CircleDot = 0xE348, Usb = 0xE359, ArrowUpRight = 0xE051,
+                  Highlighter = 0xE0F7, Grid2x2 = 0xE503, Type = 0xE197,
+                  Undo2 = 0xE2A0, Check = 0xE070, Play = 0xE13F, Pause = 0xE131;
+}
+
 // Measures cached text (ink width, line height).
 static void measure_text_c(SDL_Renderer* r, const std::string& s, int px, int* w, int* h,
                            int weight = 500) {
@@ -2104,14 +2116,6 @@ void Renderer::run() {
                         break;
                     }
 
-                    if (mute_btn_.w > 0 &&
-                        in_rect(mx, my, mute_btn_.x, mute_btn_.y,
-                                mute_btn_.w, mute_btn_.h)) {
-                        audio_muted_ = !audio_muted_;
-                        if (audio_mute_fn_) audio_mute_fn_(audio_muted_);
-                        break;
-                    }
-
                     // Bezel close (X) button — only present when the menu
                     // is hidden. Same effect as the island close button.
                     if (bezel_close_btn_.w > 0 &&
@@ -2979,7 +2983,6 @@ void Renderer::render_frame() {
         SDL_RenderCopy(sdl_renderer_, texture_, nullptr, &dst);
         close_btn_ = screenshot_btn_ = folder_btn_ = icon_btn_ = {};
         record_btn_ = {};
-        mute_btn_ = {};
         resize_grip_ = {};
         resize_grip_tl_ = {};
         for (int i = 0; i < kSideBtnCount; ++i) side_btn_[i] = side_btn_hit_[i] = {};
@@ -3303,7 +3306,7 @@ void Renderer::render_frame() {
             }
             SDL_SetRenderDrawColor(sdl_renderer_, 37, 99, 235, 255);
             fill_circle(sdl_renderer_, mcx, mcy, mark_r);
-            draw_glyph(sdl_renderer_, 0xE8EA, mcx, mcy, (int)(mark_r * 1.1f), 255, 255, 255, 255);
+            draw_glyph(sdl_renderer_, lucide::Smartphone, mcx, mcy, (int)(mark_r * 1.1f), 255, 255, 255, 255);
 
             int ty = mcy + (int)(mark_r * 1.95f);
             int th = draw_text_c(sdl_renderer_, "PhoneMimi", (int)(u * 0.085f),
@@ -3392,61 +3395,6 @@ void Renderer::render_frame() {
     // Phone frame overlay (on top — covers island and panel edges)
     phone_frame_.render(sdl_renderer_, frame_dst_x_, frame_dst_y_, frame_dst_w_, frame_dst_h_);
     draw_side_buttons_(bezel_hover_key, bezel_hover_text, bezel_hover_ax, bezel_hover_ay);
-
-    // Mute control in the left barrel, aligned with the upper volume button.
-    mute_btn_ = {};
-    if (!phone_frame_.is_tablet()) {
-        float frame_scale = (float)frame_dst_w_ / std::max(1, phone_frame_.frame_width());
-        int screen_h = phone_frame_.screen_height();
-        int bezel_top = phone_frame_.bezel_top_size();
-        int action_h = std::max(8, (int)(screen_h * 0.030f));
-        int volume_h = std::max(21, (int)(screen_h * 0.0675f));
-        int action_y = bezel_top + (int)(screen_h * 0.17f);
-        int volume_up_y = action_y + action_h + std::max(6, volume_h / 3);
-        int center_x = frame_dst_x_ + (int)(phone_frame_.bezel_left() * frame_scale * 0.5f);
-        int center_y = frame_dst_y_ + (int)((volume_up_y + volume_h / 2) * frame_scale);
-        int bezel_px = std::max(4, (int)(phone_frame_.bezel_left() * frame_scale));
-        int hit_size = std::max(16, (int)(bezel_px * 1.5f));
-        mute_btn_ = {center_x - hit_size / 2, center_y - hit_size / 2, hit_size, hit_size};
-
-        int mx, my;
-        SDL_GetMouseState(&mx, &my);
-        bool hovered = in_rect(mx, my, mute_btn_.x, mute_btn_.y,
-                               mute_btn_.w, mute_btn_.h);
-        int radius = std::max(4, bezel_px / 2);
-        SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
-        uint8_t bg = hovered ? 90 : 55;
-        SDL_SetRenderDrawColor(sdl_renderer_, bg, bg, bg, hovered ? 220 : 160);
-        fill_circle(sdl_renderer_, center_x, center_y, radius);
-
-        SDL_SetRenderDrawColor(sdl_renderer_, 245, 245, 245, hovered ? 255 : 220);
-        int glyph = std::max(3, radius / 2);
-        SDL_Rect speaker{center_x - glyph, center_y - glyph / 2,
-                         std::max(2, glyph / 2), glyph};
-        SDL_RenderFillRect(sdl_renderer_, &speaker);
-        SDL_RenderDrawLine(sdl_renderer_, center_x - glyph / 2, center_y - glyph / 2,
-                           center_x + glyph / 2, center_y - glyph);
-        SDL_RenderDrawLine(sdl_renderer_, center_x - glyph / 2, center_y + glyph / 2,
-                           center_x + glyph / 2, center_y + glyph);
-        if (audio_muted_) {
-            SDL_SetRenderDrawColor(sdl_renderer_, 255, 110, 110, 245);
-            SDL_RenderDrawLine(sdl_renderer_, center_x - glyph, center_y - glyph,
-                               center_x + glyph, center_y + glyph);
-        } else {
-            SDL_RenderDrawLine(sdl_renderer_, center_x + glyph, center_y - glyph / 2,
-                               center_x + glyph + 2, center_y - glyph / 4);
-            SDL_RenderDrawLine(sdl_renderer_, center_x + glyph + 2, center_y - glyph / 4,
-                               center_x + glyph + 2, center_y + glyph / 4);
-            SDL_RenderDrawLine(sdl_renderer_, center_x + glyph + 2, center_y + glyph / 4,
-                               center_x + glyph, center_y + glyph / 2);
-        }
-        if (hovered) {
-            bezel_hover_key = "mute";
-            bezel_hover_text = audio_muted_ ? "Unmute audio (U)" : "Mute audio (U)";
-            bezel_hover_ax = center_x;
-            bezel_hover_ay = center_y - radius - 4;
-        }
-    }
 
     // Recording HUD — countdown digit while waiting, "REC + elapsed" chip
     // while recording. Drawn on the screen content (under phone bezel) but
@@ -3573,18 +3521,9 @@ void Renderer::render_frame() {
                     SDL_RenderDrawLine(sdl_renderer_, x1 + dx, y1 + dy,
                                                        x2 + dx, y2 + dy);
         };
-        if (island_anim_ > 0.5f) {
-            // Open state — downward chevron "v" spanning the same width
-            // as the collapsed bar.
-            int v_drop = g_half / 2;             // vertical depth of the V
-            draw_thick_seg(star_cx - g_half, star_cy - v_drop / 2,
-                           star_cx,          star_cy + v_drop, t_chev);
-            draw_thick_seg(star_cx + g_half, star_cy - v_drop / 2,
-                           star_cx,          star_cy + v_drop, t_chev);
-        } else {
-            // Closed state — horizontal bar "-".
-            fill_rect_centered(star_cx, star_cy, g_sz, t_bar);
-        }
+        (void)fill_rect_centered; (void)draw_thick_seg; (void)t_bar; (void)t_chev; (void)g_half;
+        draw_glyph(sdl_renderer_, island_anim_ > 0.5f ? lucide::ChevronUp : lucide::ChevronDown,
+                   star_cx, star_cy, g_sz * 3 / 2, 220, 224, 230, sa);
         if (star_hover) {
             bezel_hover_key = "menu";
             bezel_hover_text = "Menu (M)";
@@ -3729,10 +3668,9 @@ void Renderer::render_frame() {
                     SDL_RenderDrawLine(sdl_renderer_, x1 + dx, y1 + dy,
                                                        x2 + dx, y2 + dy);
         };
-        draw_thick_seg_x(xcx_c - xg_half, xcy_c - xg_half,
-                         xcx_c + xg_half, xcy_c + xg_half, xt_chev);
-        draw_thick_seg_x(xcx_c - xg_half, xcy_c + xg_half,
-                         xcx_c + xg_half, xcy_c - xg_half, xt_chev);
+        (void)draw_thick_seg_x; (void)xt_chev; (void)xg_half;
+        draw_glyph(sdl_renderer_, lucide::X, xcx_c, xcy_c, xg_sz * 3 / 2,
+                   xhov ? 235 : 220, xhov ? 110 : 224, xhov ? 110 : 230, xa);
 
         if (xhov) {
             bezel_hover_key = "bezel_close";
@@ -3868,19 +3806,10 @@ void Renderer::render_frame() {
 
                 int icon_r = dot_r + (sources[i].active ? 2 : 1);
 
-                if (sources[i].paused) {
-                    // Pause icon — two vertical bars
-                    int bw = std::max(2, (icon_r * 2) / 3);
-                    int bh = icon_r * 2 + 1;
-                    int gap = std::max(2, icon_r);
-                    SDL_Rect lb{cx - gap / 2 - bw, cy - bh / 2, bw, bh};
-                    SDL_Rect rb{cx + gap / 2,      cy - bh / 2, bw, bh};
-                    SDL_RenderFillRect(sdl_renderer_, &lb);
-                    SDL_RenderFillRect(sdl_renderer_, &rb);
-                } else {
-                    // Play icon — right-pointing triangle
-                    fill_play(cx, cy, icon_r, icon_r);
-                }
+                (void)fill_play;
+                uint8_t ia = sources[i].active ? 255 : a;
+                draw_glyph(sdl_renderer_, sources[i].paused ? lucide::Pause : lucide::Play,
+                           cx, cy, icon_r * 3, 230, 234, 240, ia);
 
                 source_btns_.emplace_back(sources[i].id, r);
                 if (hover) {
@@ -4735,10 +4664,11 @@ void Renderer::draw_island() {
     int icon_y = island_y + (row_h - icon_sz) / 2;
     {
         bool ih = in_rect(mx, my, icon_x, icon_y, icon_sz, icon_sz);
-        SDL_SetRenderDrawColor(sdl_renderer_, ih ? 59 : 37, ih ? 130 : 99, ih ? 246 : 235, 255);
-        fill_circle(sdl_renderer_, icon_x + icon_sz / 2, icon_y + icon_sz / 2, icon_sz / 2);
-        draw_glyph(sdl_renderer_, 0xE8EA, icon_x + icon_sz / 2, icon_y + icon_sz / 2,
-                   icon_sz * 6 / 10, 255, 255, 255, 255);
+        const Accent& ac = accent_for(settings_.accent_color);
+        SDL_SetRenderDrawColor(sdl_renderer_, ac.r, ac.g, ac.b, ih ? 70 : 46);
+        fill_round_rect(sdl_renderer_, icon_x, icon_y, icon_sz, icon_sz, icon_sz / 3);
+        draw_glyph(sdl_renderer_, lucide::Smartphone, icon_x + icon_sz / 2, icon_y + icon_sz / 2,
+                   icon_sz * 6 / 10, ac.lr, ac.lg, ac.lb, 255);
     }
     icon_btn_ = {icon_x, icon_y, icon_sz, icon_sz};
     bool icon_hover = in_rect(mx, my, icon_x, icon_y, icon_sz, icon_sz);
@@ -4755,10 +4685,12 @@ void Renderer::draw_island() {
     {
         bool gh = in_rect(mx, my, gear_x, by_left, gear_sz, gear_sz);
         // Background pill — slightly transparent so it recedes into the island.
-        SDL_SetRenderDrawColor(sdl_renderer_, gh ? 60 : 42, gh ? 60 : 42, gh ? 65 : 46, gh ? 160 : 110);
-        fill_circle(sdl_renderer_, gear_x + gear_sz / 2, by_left + gear_sz / 2, gear_sz / 2);
-        draw_glyph(sdl_renderer_, 0xE713, gear_x + gear_sz / 2, by_left + gear_sz / 2,
-                   gear_sz * 11 / 20, 215, 218, 228, gh ? 255 : 190);
+        if (gh || settings_panel_visible_) {
+            SDL_SetRenderDrawColor(sdl_renderer_, 255, 255, 255, gh ? 26 : 20);
+            fill_round_rect(sdl_renderer_, gear_x, by_left, gear_sz, gear_sz, gear_sz / 3);
+        }
+        draw_glyph(sdl_renderer_, lucide::Settings, gear_x + gear_sz / 2, by_left + gear_sz / 2,
+                   gear_sz * 11 / 20, 230, 234, 240, gh ? 255 : 210);
         gear_hover = gh;
     }
 
@@ -4777,19 +4709,23 @@ void Renderer::draw_island() {
     // Close button (rightmost)
     close_btn_ = {bx, by, btn_sz, btn_sz};
     bool close_hover = in_rect(mx, my, bx, by, btn_sz, btn_sz);
-    SDL_SetRenderDrawColor(sdl_renderer_, close_hover ? 80 : 50, close_hover ? 30 : 30, close_hover ? 30 : 30, 180);
-    fill_circle(sdl_renderer_, bx + btn_sz / 2, by + btn_sz / 2, btn_sz / 2);
-    draw_glyph(sdl_renderer_, 0xE711, bx + btn_sz / 2, by + btn_sz / 2,
-               btn_sz * 11 / 22, 255, 255, 255, close_hover ? 255 : 210);
+    if (close_hover) {
+        SDL_SetRenderDrawColor(sdl_renderer_, 255, 90, 95, 60);
+        fill_round_rect(sdl_renderer_, bx, by, btn_sz, btn_sz, btn_sz / 3);
+    }
+    draw_glyph(sdl_renderer_, lucide::X, bx + btn_sz / 2, by + btn_sz / 2,
+               btn_sz * 11 / 22, 201, 209, 220, close_hover ? 255 : 230);
 
     // Folder button
     bx -= btn_sz + gap;
     folder_btn_ = {bx, by, btn_sz, btn_sz};
     bool folder_hover = in_rect(mx, my, bx, by, btn_sz, btn_sz);
-    SDL_SetRenderDrawColor(sdl_renderer_, folder_hover ? 70 : 50, folder_hover ? 70 : 50, folder_hover ? 75 : 55, 180);
-    fill_circle(sdl_renderer_, bx + btn_sz / 2, by + btn_sz / 2, btn_sz / 2);
-    draw_glyph(sdl_renderer_, 0xE8B7, bx + btn_sz / 2, by + btn_sz / 2,
-               btn_sz * 11 / 22, 255, 255, 255, folder_hover ? 255 : 210);
+    if (folder_hover) {
+        SDL_SetRenderDrawColor(sdl_renderer_, 255, 255, 255, 22);
+        fill_round_rect(sdl_renderer_, bx, by, btn_sz, btn_sz, btn_sz / 3);
+    }
+    draw_glyph(sdl_renderer_, lucide::Folder, bx + btn_sz / 2, by + btn_sz / 2,
+               btn_sz * 11 / 22, 201, 209, 220, folder_hover ? 255 : 230);
 
     // Record button (to the right of the photo button — sits between
     // folder and screenshot in the right-to-left cluster).
@@ -4805,20 +4741,24 @@ void Renderer::draw_island() {
             now - btn_flash_start_).count(); // any monotonic reference
         rec_pulse = 0.55f + 0.45f * (float)std::abs(std::sin(ms * 0.005));
     }
-    uint8_t rec_bg_r = rec_active ? (uint8_t)(110 * rec_pulse + 60) : (rec_hover ? 80 : 55);
-    uint8_t rec_bg_g = rec_hover ? 35 : 35;
-    uint8_t rec_bg_b = rec_hover ? 35 : 35;
-    SDL_SetRenderDrawColor(sdl_renderer_, rec_bg_r, rec_bg_g, rec_bg_b, 180);
-    fill_circle(sdl_renderer_, bx + btn_sz / 2, by + btn_sz / 2, btn_sz / 2);
+    if (rec_active || rec_hover) {
+        if (rec_active) SDL_SetRenderDrawColor(sdl_renderer_, 255, 90, 95, (uint8_t)(40 + 50 * rec_pulse));
+        else            SDL_SetRenderDrawColor(sdl_renderer_, 255, 255, 255, 22);
+        fill_round_rect(sdl_renderer_, bx, by, btn_sz, btn_sz, btn_sz / 3);
+    }
     {
         int rcx = bx + btn_sz / 2, rcy = by + btn_sz / 2;
         int gpx = btn_sz * 12 / 22;
-        if (rec_active)
-            draw_glyph(sdl_renderer_, 0xE71A, rcx, rcy, gpx, 255, 110, 110, 255);
-        else if (rec_count)
-            draw_glyph(sdl_renderer_, 0xECCA, rcx, rcy, gpx, 245, 245, 245, 235);
-        else
-            draw_glyph(sdl_renderer_, 0xECCB, rcx, rcy, gpx, 255, 100, 100, rec_hover ? 255 : 225);
+        if (rec_active) {
+            draw_glyph(sdl_renderer_, lucide::Square, rcx, rcy, gpx, 255, 110, 110, 255);
+        } else {
+            // Lucide circle ring with a solid dot inside, as in the mockup.
+            draw_glyph(sdl_renderer_, lucide::Circle, rcx, rcy, gpx, 201, 209, 220,
+                       rec_hover ? 255 : 230);
+            if (rec_count) SDL_SetRenderDrawColor(sdl_renderer_, 245, 245, 245, 235);
+            else           SDL_SetRenderDrawColor(sdl_renderer_, 255, 90, 95, 255);
+            fill_circle(sdl_renderer_, rcx, rcy, std::max(2, gpx / 5));
+        }
     }
 
     // Screenshot button — filled white dot, mirroring the record button's
@@ -4826,13 +4766,14 @@ void Renderer::draw_island() {
     bx -= btn_sz + gap;
     screenshot_btn_ = {bx, by, btn_sz, btn_sz};
     bool ss_hover = in_rect(mx, my, bx, by, btn_sz, btn_sz);
-    uint8_t ss_bg = flashing ? 200 : (ss_hover ? 70 : 50);
-    SDL_SetRenderDrawColor(sdl_renderer_, ss_bg, ss_bg, ss_bg + 5, 180);
-    fill_circle(sdl_renderer_, bx + btn_sz / 2, by + btn_sz / 2, btn_sz / 2);
+    if (flashing || ss_hover) {
+        SDL_SetRenderDrawColor(sdl_renderer_, 255, 255, 255, flashing ? 200 : 22);
+        fill_round_rect(sdl_renderer_, bx, by, btn_sz, btn_sz, btn_sz / 3);
+    }
     int sscx = bx + btn_sz / 2, sscy = by + btn_sz / 2;
-    draw_glyph(sdl_renderer_, 0xE722, sscx, sscy, btn_sz * 12 / 22,
-               flashing ? 20 : 245, flashing ? 20 : 245, flashing ? 20 : 250,
-               ss_hover || flashing ? 255 : 225);
+    draw_glyph(sdl_renderer_, lucide::Camera, sscx, sscy, btn_sz * 12 / 22,
+               flashing ? 20 : 201, flashing ? 20 : 209, flashing ? 20 : 220,
+               ss_hover || flashing ? 255 : 230);
 
     // Settings (gear) button is now drawn next to the icon on the LEFT side
     // (see block above). The right-cluster ends here with the screenshot button.
@@ -8880,45 +8821,13 @@ void Renderer::draw_annotator() {
             SDL_SetRenderDrawColor(sdl_renderer_, 200, 200, 220, 255);
             SDL_RenderDrawRect(sdl_renderer_, &br);
         }
-        // Tiny glyph for each tool — kept primitive-only so the toolbar
-        // stays readable without bringing in icon assets.
         int cx = tx + btn_sz / 2, cy = ty + btn_sz / 2;
-        int g = btn_sz / 3;
-        SDL_SetRenderDrawColor(sdl_renderer_, 235, 235, 240, 255);
-        if (std::string(glyph_kind) == "arrow") {
-            SDL_RenderDrawLine(sdl_renderer_, cx - g, cy + g, cx + g, cy - g);
-            SDL_RenderDrawLine(sdl_renderer_, cx + g, cy - g, cx + g - g/2, cy - g);
-            SDL_RenderDrawLine(sdl_renderer_, cx + g, cy - g, cx + g, cy - g + g/2);
-        } else if (std::string(glyph_kind) == "rect") {
-            SDL_Rect r{cx - g, cy - g/2 - 1, g * 2, g + 2};
-            SDL_RenderDrawRect(sdl_renderer_, &r);
-        } else if (std::string(glyph_kind) == "highlight") {
-            SDL_SetRenderDrawColor(sdl_renderer_, 245, 205, 60, 160);
-            SDL_Rect r{cx - g, cy - g/2 - 1, g * 2, g + 2};
-            SDL_RenderFillRect(sdl_renderer_, &r);
-        } else if (std::string(glyph_kind) == "pixelate") {
-            // 2x2 mini mosaic.
-            int q = g;
-            SDL_SetRenderDrawColor(sdl_renderer_, 200, 200, 200, 255);
-            SDL_Rect r0{cx - q, cy - q, q, q};
-            SDL_RenderFillRect(sdl_renderer_, &r0);
-            SDL_SetRenderDrawColor(sdl_renderer_, 130, 130, 130, 255);
-            SDL_Rect r1{cx,     cy - q, q, q};
-            SDL_RenderFillRect(sdl_renderer_, &r1);
-            SDL_SetRenderDrawColor(sdl_renderer_, 160, 160, 160, 255);
-            SDL_Rect r2{cx - q, cy,     q, q};
-            SDL_RenderFillRect(sdl_renderer_, &r2);
-            SDL_SetRenderDrawColor(sdl_renderer_, 100, 100, 100, 255);
-            SDL_Rect r3{cx,     cy,     q, q};
-            SDL_RenderFillRect(sdl_renderer_, &r3);
-        } else if (std::string(glyph_kind) == "text") {
-            // Stylised "T" — top bar + vertical stem.
-            SDL_Rect bar{cx - g, cy - g, g * 2, std::max(2, g / 3)};
-            SDL_RenderFillRect(sdl_renderer_, &bar);
-            SDL_Rect stem{cx - std::max(1, g / 4), cy - g,
-                          std::max(2, g / 2), g * 2};
-            SDL_RenderFillRect(sdl_renderer_, &stem);
-        }
+        std::string k = glyph_kind;
+        wchar_t cp = k == "arrow" ? lucide::ArrowUpRight : k == "rect" ? lucide::Square
+                   : k == "highlight" ? lucide::Highlighter : k == "pixelate" ? lucide::Grid2x2
+                   : lucide::Type;
+        if (k == "highlight") draw_glyph(sdl_renderer_, cp, cx, cy, btn_sz * 3 / 5, 245, 205, 60, 255);
+        else                  draw_glyph(sdl_renderer_, cp, cx, cy, btn_sz * 3 / 5, 235, 235, 240, 255);
         tx += btn_sz + gap;
     };
     draw_tool_btn(anno_btn_arrow_,     AnnoTool::Arrow,     "arrow");
@@ -8998,30 +8907,9 @@ void Renderer::draw_annotator() {
         SDL_Rect br{tx, ty, btn_sz, btn_sz};
         SDL_RenderFillRect(sdl_renderer_, &br);
         int cx = tx + btn_sz / 2, cy = ty + btn_sz / 2;
-        int gg = btn_sz / 3;
-        SDL_SetRenderDrawColor(sdl_renderer_, r, g, b, 255);
-        if (std::string(glyph_kind) == "undo") {
-            // Left-pointing curved-back arrow: head on the left, tail loops
-            // up and over to the right. Mirrored from the previous version
-            // because "undo" reads more naturally as a leftward motion.
-            SDL_RenderDrawLine(sdl_renderer_, cx - gg, cy - gg/2, cx + gg/2, cy - gg/2);
-            SDL_RenderDrawLine(sdl_renderer_, cx + gg/2, cy - gg/2, cx + gg, cy);
-            SDL_RenderDrawLine(sdl_renderer_, cx + gg, cy, cx + gg/2, cy + gg/2);
-            // Arrow head wedge at the left tip.
-            SDL_RenderDrawLine(sdl_renderer_, cx - gg, cy - gg/2, cx - gg + gg/3, cy - gg);
-            SDL_RenderDrawLine(sdl_renderer_, cx - gg, cy - gg/2, cx - gg + gg/3, cy);
-        } else if (std::string(glyph_kind) == "save") {
-            // Checkmark.
-            SDL_RenderDrawLine(sdl_renderer_, cx - gg, cy, cx - gg/3, cy + gg);
-            SDL_RenderDrawLine(sdl_renderer_, cx - gg/3, cy + gg, cx + gg, cy - gg);
-            SDL_RenderDrawLine(sdl_renderer_, cx - gg, cy + 1, cx - gg/3, cy + gg + 1);
-            SDL_RenderDrawLine(sdl_renderer_, cx - gg/3, cy + gg + 1, cx + gg, cy - gg + 1);
-        } else if (std::string(glyph_kind) == "cancel") {
-            SDL_RenderDrawLine(sdl_renderer_, cx - gg, cy - gg, cx + gg, cy + gg);
-            SDL_RenderDrawLine(sdl_renderer_, cx - gg, cy + gg, cx + gg, cy - gg);
-            SDL_RenderDrawLine(sdl_renderer_, cx - gg, cy - gg + 1, cx + gg, cy + gg + 1);
-            SDL_RenderDrawLine(sdl_renderer_, cx - gg, cy + gg - 1, cx + gg, cy - gg - 1);
-        }
+        std::string k = glyph_kind;
+        wchar_t cp = k == "undo" ? lucide::Undo2 : k == "save" ? lucide::Check : lucide::X;
+        draw_glyph(sdl_renderer_, cp, cx, cy, btn_sz * 3 / 5, r, g, b, 255);
         tx += btn_sz + gap;
     };
     draw_action_btn(anno_btn_undo_,   "undo",   220, 220, 220);
