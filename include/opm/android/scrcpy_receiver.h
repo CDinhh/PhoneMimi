@@ -119,6 +119,7 @@ public:
         int bit_rate = 8'000'000;             // bits/s (H.264)
         int max_fps = 60;
         bool control = true;                  // open the control channel (mouse/keyboard)
+        bool hide_soft_keyboard = true;       // keep the on-screen keyboard of the phone down
     };
 
     // Spawns the scrcpy server on the device, opens the reverse tunnel,
@@ -156,6 +157,7 @@ public:
 
 private:
     bool send_ctrl_(const uint8_t* data, size_t n);
+    void attach_virtual_keyboard_();
     void worker_();
 
     Config cfg_;

@@ -87,8 +87,13 @@ Settings Settings::load() {
             else if (k == "screenshot_resize_height_cm")  s.screenshot_resize_height_cm  = std::clamp(std::stof(v), 0.5f, 50.0f);
             else if (k == "screenshot_save_original_too") s.screenshot_save_original_too = (v == "1" || v == "true");
             else if (k == "use_computer_name")            s.use_computer_name            = (v == "1" || v == "true");
+            else if (k == "android_hide_soft_keyboard")   s.android_hide_soft_keyboard   = (v == "1" || v == "true");
             else if (k == "android_auto_usb")             s.android_auto_usb             = (v == "1" || v == "true");
             else if (k == "always_on_top")                s.always_on_top                = (v == "1" || v == "true");
+            else if (k == "android_max_size")             s.android_max_size             = std::clamp(std::stoi(v), 0, 8192);
+            else if (k == "android_max_fps")              s.android_max_fps              = std::clamp(std::stoi(v), 0, 240);
+            else if (k == "android_bitrate_mbps")         s.android_bitrate_mbps         = std::clamp(std::stoi(v), 1, 100);
+            else if (k == "airplay_max_fps")              s.airplay_max_fps              = std::clamp(std::stoi(v), 15, 60);
             else if (k == "record_format")                s.record_format                = std::clamp(std::stoi(v), 0, 1);
             else if (k == "record_max_duration_sec")      s.record_max_duration_sec      = std::max(0, std::stoi(v));
             else if (k == "record_fps_mp4")               s.record_fps_mp4               = std::clamp(std::stoi(v), 5, 60);
@@ -116,9 +121,14 @@ bool Settings::save() const {
     f << "screenshot_resize_height_cm=" << screenshot_resize_height_cm << "\n";
     f << "screenshot_save_original_too=" << (screenshot_save_original_too ? "1" : "0") << "\n";
     f << "use_computer_name="           << (use_computer_name           ? "1" : "0") << "\n";
+    f << "android_hide_soft_keyboard="  << (android_hide_soft_keyboard  ? "1" : "0") << "\n";
     f << "android_auto_usb="            << (android_auto_usb            ? "1" : "0") << "\n";
     f << "always_on_top="               << (always_on_top               ? "1" : "0") << "\n";
     f << "record_format="               << record_format << "\n";
+    f << "android_max_size="            << android_max_size << "\n";
+    f << "android_max_fps="             << android_max_fps << "\n";
+    f << "android_bitrate_mbps="        << android_bitrate_mbps << "\n";
+    f << "airplay_max_fps="             << airplay_max_fps << "\n";
     f << "record_max_duration_sec="     << record_max_duration_sec << "\n";
     f << "record_fps_mp4="              << record_fps_mp4 << "\n";
     f << "record_fps_gif="              << record_fps_gif << "\n";

@@ -54,6 +54,19 @@ struct Settings {
     // USB (debugging must already be allowed on the phone).
     bool android_auto_usb = true;
 
+    // Keep the on-screen keyboard of the phone hidden while mirroring (the
+    // PC keyboard is used instead). Applies from the next connection.
+    bool android_hide_soft_keyboard = true;
+
+    // Stream quality. Defaults ask for the most each side can deliver.
+    // Android (scrcpy): longest side in pixels and frames per second,
+    // 0 = no limit (the phone's native resolution / refresh rate).
+    int android_max_size = 0;
+    int android_max_fps = 0;
+    int android_bitrate_mbps = 16;
+    // iPhone (AirPlay): frame rate we advertise; iOS sends at most 60.
+    int airplay_max_fps = 60;
+
     // Webcam drawer (TODO.md #9). Persisted so the user's "show my hands"
     // preference survives a restart. webcam_device_id is the MF symbolic
     // link returned by WebcamCapture::enumerate(); empty = system default.

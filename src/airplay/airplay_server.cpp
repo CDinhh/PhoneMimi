@@ -1,6 +1,7 @@
 #include <opm/airplay/airplay_server.h>
 #include <opm/airplay/bplist.h>
 #include <opm/config.h>
+#include <opm/settings.h>
 #include <algorithm>
 #include <chrono>
 #include <cstring>
@@ -447,7 +448,7 @@ network::RtspResponse AirPlayServer::handle_info(const network::RtspRequest& req
             {mk("heightPhysical"), w.add_uint(0)},
             {mk("rotation"), w.add_bool(false)},
             {mk("refreshRate"), w.add_real(1.0 / 60.0)},
-            {mk("maxFPS"), w.add_uint(30)},
+            {mk("maxFPS"), w.add_uint(static_cast<uint64_t>(Settings::load().airplay_max_fps))},
             {mk("overscanned"), w.add_bool(false)},
             {mk("features"), w.add_uint(14)}
         });

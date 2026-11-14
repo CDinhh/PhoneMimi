@@ -474,6 +474,7 @@ bool ScrcpyReceiver::start(const Config& cfg, AdbController& adb) {
             }
         });
     }
+    if (cfg.hide_soft_keyboard && control_ready()) attach_virtual_keyboard_();
     std::cout << "[scrcpy] device connected" << (cs != INVALID_SOCK ? " (control on)" : "") << "\n";
 
     running_.store(true);
@@ -622,7 +623,17 @@ size_t utf8_prefix(const std::string& s, size_t max) {
 }
 enum : uint8_t {
     MSG_KEYCODE = 0, MSG_TEXT = 1, MSG_TOUCH = 2, MSG_SCROLL = 3,
-    MSG_SET_CLIPBOARD = 9, MSG_SET_DISPLAY_POWER = 10,
+    MSG_SET_CLIPBOARD = 9, MSG_SET_DISPLAY_POWER = 10, MSG_UHID_CREATE = 12,
+};
+// Boot-protocol keyboard, same descriptor scrcpy registers for --keyboard=uhid.
+const uint8_t HID_KEYBOARD_DESC[] = {
+    0x05, 0x01, 0x09, 0x06, 0xA1, 0x01,
+    0x05, 0x07, 0x19, 0xE0, 0x29, 0xE7, 0x15, 0x00, 0x25, 0x01, 0x75, 0x01, 0x95, 0x08, 0x81, 0x02,
+    0x75, 0x08, 0x95, 0x01, 0x81, 0x01,
+    0x05, 0x08, 0x19, 0x01, 0x29, 0x05, 0x75, 0x01, 0x95, 0x05, 0x91, 0x02,
+    0x75, 0x03, 0x95, 0x01, 0x91, 0x01,
+    0x05, 0x07, 0x19, 0x00, 0x29, 0x65, 0x15, 0x00, 0x25, 0x65, 0x75, 0x08, 0x95, 0x06, 0x81, 0x00,
+    0xC0,
 };
 } // namespace
 
@@ -710,11 +721,22 @@ void ScrcpyReceiver::send_clipboard(const std::string& s, bool paste) {
     send_ctrl_(b.data(), b.size());
 }
 
+// Registers a physical keyboard on the phone. We never type through it
+// (text is injected); its presence alone makes Android keep the on-screen
+// keyboard hidden when a text field is tapped.
+void ScrcpyReceiver::attach_virtual_keyboard_() {
+    uint8_t b[6 + sizeof(HID_KEYBOARD_DESC)];
+    b[0] = MSG_UHID_CREATE;
+    put16(b + 1, 1);                          // device id
+    b[3] = 0;                                 // name length: none
+    put16(b + 4, sizeof(HID_KEYBOARD_DESC));
+    memcpy(b + 6, HID_KEYBOARD_DESC, sizeof(HID_KEYBOARD_DESC));
+    send_ctrl_(b, sizeof(b));
+}
+
 void ScrcpyReceiver::send_display_power(bool on) {
     if (!control_ready()) return;
-    // 0 = off. "On" is sent as 2 so it reads as true for scrcpy 3.x (a
-    // boolean) and as POWER_MODE_NORMAL for the older 2.x servers.
-    const uint8_t b[2] = { MSG_SET_DISPLAY_POWER, static_cast<uint8_t>(on ? 2 : 0) };
+    const uint8_t b[2] = { MSG_SET_DISPLAY_POWER, static_cast<uint8_t>(on ? 1 : 0) };
     send_ctrl_(b, sizeof(b));
 }
 

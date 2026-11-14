@@ -43,6 +43,15 @@ static bool is_usb_serial(const std::string& s) {
            s.rfind("emulator-", 0) != 0;
 }
 
+// Resolution / frame rate / bitrate chosen in the settings file.
+static void apply_stream_settings(android::ScrcpyReceiver::Config& sc) {
+    const Settings s = Settings::load();
+    sc.max_size = s.android_max_size;
+    sc.max_fps  = s.android_max_fps;
+    sc.bit_rate = s.android_bitrate_mbps * 1'000'000;
+    sc.hide_soft_keyboard = s.android_hide_soft_keyboard;
+}
+
 void App::usb_watch_loop_() {
     // Phones handled since they were plugged in. Each one auto-connects
     // once per plug-in, so disconnecting it by hand sticks until re-plug.
@@ -115,6 +124,7 @@ bool App::start_android_session_(const std::string& serial,
     android::ScrcpyReceiver::Config sc;
     sc.device_serial   = serial;
     sc.server_jar_path = android_jar_path_;
+    apply_stream_settings(sc);
     {
         std::lock_guard lk(scrcpy_mutex_);
         sc.local_port = pick_local_port(scrcpy_sessions_);
@@ -314,6 +324,7 @@ std::string App::android_finish_connect_(const std::string& ip,
     android::ScrcpyReceiver::Config sc;
     sc.device_serial   = serial;
     sc.server_jar_path = android_jar_path_;
+    apply_stream_settings(sc);
     std::string err;
     if (!start_android_session_(serial, &err))
         return err;
