@@ -33,17 +33,22 @@ jobs:
         with:
           arch: x64
 
-      - name: Cache vcpkg installed packages
+      # vcpkg's own binary cache: built packages are zipped here and reused,
+      # so FFmpeg / SDL2 / OpenSSL are only compiled when their versions change.
+      - name: Prepare vcpkg binary cache
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'vcpkg-bincache'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$dir" >> $env:GITHUB_ENV
+
+      - name: Cache vcpkg binary packages
         uses: actions/cache@v4
         with:
-          path: |
-            ~/vcpkg/installed
-            ~/vcpkg/buildtrees
-            ~/vcpkg/packages
-            ~/vcpkg/downloads
-          key: vcpkg-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'scripts/setup_deps.ps1') }}
+          path: ${{ runner.temp }}/vcpkg-bincache
+          key: vcpkg-bin-${{ runner.os }}-${{ hashFiles('.github/workflows/release.yml') }}
           restore-keys: |
-            vcpkg-${{ runner.os }}-
+            vcpkg-bin-${{ runner.os }}-
 
       - name: Install vcpkg + dependencies
         shell: pwsh
