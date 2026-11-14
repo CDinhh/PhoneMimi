@@ -1163,102 +1163,13 @@ bool Renderer::init(const std::string& title, int /*width*/, int /*height*/) {
         };
         version_lines_.push_back(make_ver(L"Version History", 40, 255, 255, 255));
         version_lines_.push_back({nullptr, 0, 0}); // spacer
-        version_lines_.push_back(make_ver(L"30.09.2026 \u2013 0.6.2 (pre-release)", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"AirPlay audio receiver, mute control, pause-safe mirroring"));
+        version_lines_.push_back(make_ver(L"15.11.2026 \u2013 3.3.6", 34, 200, 200, 255));
+        version_lines_.push_back(make_desc(L"New look: Lucide icons, accent colours, new switches, Add Android panel, penguin waiting screen"));
         version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"30.09.2026 \u2013 0.6.1", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Webcam crash guard + first-click bezel interactions on inactive window"));
+        version_lines_.push_back(make_ver(L"14.11.2026 \u2013 0.7.0", 34, 200, 200, 255));
+        version_lines_.push_back(make_desc(L"PhoneMimi: Android over USB, typing and paste to the phone, side buttons, tabbed Settings"));
         version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"29.08.2026 \u2013 0.6.0", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Installer and app now digitally signed"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"27.08.2026 \u2013 0.5.2", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Usage Statistics panel + screenshot resize-to-cm"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"01.06.2026 \u2013 0.5.1", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Bezel side buttons: action button, better sizing & visibility"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"21.05.2026 \u2013 0.5.0", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Webcam drawer (W): slide-out camera panel, WYSIWYG screenshots/recording"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"20.05.2026 \u2013 0.4.2", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Capture files renamed to <date> <time> <function> for chronological sorting"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"18.05.2026 \u2013 0.4.1", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Open screenshots directly in Snagit Editor (new Settings toggle)"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"18.05.2026 \u2013 0.4.0", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Multi-device shortcuts (Ctrl+1\u20139), always-on-top, Apple naming"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"17.05.2026 \u2013 0.3.9", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Small telemetry in settings"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"16.05.2026 \u2013 0.3.8", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Tuned for larger screens from macOS"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"15.05.2026 \u2013 0.3.7", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Copy text from the phone screen (Ctrl+Shift+T)"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"14.05.2026 \u2013 0.3.6", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Screenshot annotation tools (Ctrl+Shift+S)"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"13.05.2026 \u2013 0.3.5", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Version check and UI tunings"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"13.05.2026 \u2013 0.3.4", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"New Android discovery routine for easy connect"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"12.05.2026 \u2013 0.3.3", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Right-click resize grip to reset to default size"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"11.05.2026 \u2013 0.3.2", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"User interface fixes"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"10.05.2026 \u2013 0.3.1", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Phone frame on recordings (rounded corners, transparent on GIF)"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"10.05.2026 \u2013 0.3.0", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Screen recording: MP4/GIF, Ctrl+R, right-click for delay/timed"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"09.05.2026 \u2013 0.2.5", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Info panel: copy network test PowerShell script (with MDM check)"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"08.05.2026 \u2013 0.2.4", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Refined bezel toggles and auto-collapse on connect"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"08.05.2026 \u2013 0.2.3", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Better Android experience and quicker screenshots"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"08.05.2026 \u2013 0.2.2", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Settings: identify as computer name on the network"));
-        version_lines_.push_back(make_desc(L"Bezel device dots show play/pause icon per source"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"07.05.2026 \u2013 0.2.1", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Settings panel (S): bezel colour + screenshot options"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"06.05.2026 \u2013 0.2.0", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Android mirroring (Wireless debugging, press A)"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"06.05.2026 \u2013 0.1.6", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Multiple iOS devices stay paired, switch from bezel dots"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"06.05.2026 \u2013 0.1.5", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"AirPlay PIN pairing for trusted-device security"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"06.05.2026 \u2013 0.1.4", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Slide-out log viewer with live filtering (press L)"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"05.05.2026 \u2013 0.1.2", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Dynamic island menu in top bezel for quick actions"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"05.05.2026 \u2013 0.1.1", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Screenshot capture to clipboard and Pictures folder"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"05.05.2026 \u2013 0.1.0", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"iOS AirPlay support"));
-        version_lines_.push_back({nullptr, 0, 0});
-        version_lines_.push_back(make_ver(L"04.05.2026 \u2013 0.0.5", 34, 200, 200, 255));
-        version_lines_.push_back(make_desc(L"Initial ideas and implementation"));
+        version_lines_.push_back(make_desc(L"Based on 1PhoneMirror by MSEndpointMgr (GPL-3.0)"));
     }
 #endif
 
@@ -1892,7 +1803,7 @@ void Renderer::run() {
                             {
                                 std::lock_guard<std::mutex> lk(update_check_mutex_);
                                 url = update_release_url_.empty()
-                                    ? std::string("https://github.com/CDinhh/1PhoneMirror")
+                                    ? std::string("https://github.com/CDinhh/PhoneMimi")
                                     : update_release_url_;
                             }
                             ShellExecuteA(nullptr, "open", url.c_str(),
@@ -4435,7 +4346,7 @@ void Renderer::draw_update_banner() {
         ver = update_latest_version_;
     }
     std::string line1 = "Update available: v" + ver;
-    static const std::string kLinkLabel = "github.com/CDinhh/1PhoneMirror";
+    static const std::string kLinkLabel = "github.com/CDinhh/PhoneMimi";
 
     if (line1 != update_line1_cached_) {
         if (update_line1_tex_) { SDL_DestroyTexture(update_line1_tex_); update_line1_tex_ = nullptr; }
