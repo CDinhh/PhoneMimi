@@ -475,6 +475,7 @@ bool ScrcpyReceiver::start(const Config& cfg, AdbController& adb) {
         });
     }
     if (cfg.hide_soft_keyboard && control_ready()) attach_virtual_keyboard_();
+    if (cfg.screen_off) send_display_power(false);
     std::cout << "[scrcpy] device connected" << (cs != INVALID_SOCK ? " (control on)" : "") << "\n";
 
     running_.store(true);

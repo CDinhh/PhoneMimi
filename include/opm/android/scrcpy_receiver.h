@@ -120,6 +120,7 @@ public:
         int max_fps = 60;
         bool control = true;                  // open the control channel (mouse/keyboard)
         bool hide_soft_keyboard = true;       // keep the on-screen keyboard of the phone down
+        bool screen_off = false;              // switch the phone display off once connected
     };
 
     // Spawns the scrcpy server on the device, opens the reverse tunnel,

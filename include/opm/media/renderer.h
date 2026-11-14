@@ -450,6 +450,17 @@ private:
     bool log_to_file_session_ = false;
     BtnRect settings_fmt_mp4_btn_;
     BtnRect settings_fmt_gif_btn_;
+    // Tabbed layout: 0 General, 1 Phone, 2 Capture, 3 Webcam.
+    int settings_tab_ = 0;
+    BtnRect settings_tab_btns_[4];
+    BtnRect settings_close_btn_;
+    BtnRect settings_toggle_usb_btn_;
+    BtnRect settings_toggle_softkbd_btn_;
+    BtnRect settings_toggle_kbd_btn_;
+    BtnRect settings_toggle_scroff_btn_;
+    BtnRect settings_seg_res_btns_[3];
+    BtnRect settings_seg_fps_btns_[3];
+    BtnRect settings_seg_ios_fps_btns_[2];
     // Update-check state (the manual "Check for updates" link lives in
     // the Info panel footer, not the Settings panel anymore).
     std::atomic<bool> update_check_in_progress_{false};

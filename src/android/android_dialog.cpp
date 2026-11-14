@@ -50,6 +50,7 @@ static void apply_stream_settings(android::ScrcpyReceiver::Config& sc) {
     sc.max_fps  = s.android_max_fps;
     sc.bit_rate = s.android_bitrate_mbps * 1'000'000;
     sc.hide_soft_keyboard = s.android_hide_soft_keyboard;
+    sc.screen_off = s.android_screen_off;
 }
 
 void App::usb_watch_loop_() {

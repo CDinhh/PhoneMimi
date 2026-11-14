@@ -844,6 +844,8 @@ bool Renderer::init(const std::string& title, int /*width*/, int /*height*/) {
     // colour. Otherwise set_bezel_color() would invalidate the freshly-built
     // frame texture and the waiting screen would never render.
     settings_ = opm::Settings::load();
+    android_kbd_on_ = settings_.android_keyboard_on;
+    android_screen_off_ = settings_.android_screen_off;
     phone_frame_.set_bezel_color(settings_.bezel_r, settings_.bezel_g, settings_.bezel_b);
     SDL_SetWindowAlwaysOnTop(window_, settings_.always_on_top ? SDL_TRUE : SDL_FALSE);
 
@@ -2253,6 +2255,63 @@ void Renderer::run() {
                         bool inside = in_rect(mx, my, settings_panel_rect_.x, settings_panel_rect_.y,
                                               settings_panel_rect_.w, settings_panel_rect_.h);
                         if (inside) {
+                            auto hit = [&](const BtnRect& b) {
+                                return b.w > 0 && in_rect(mx, my, b.x, b.y, b.w, b.h);
+                            };
+                            for (int i = 0; i < 4; ++i)
+                                if (hit(settings_tab_btns_[i])) settings_tab_ = i;
+                            if (hit(settings_close_btn_)) {
+                                settings_panel_visible_ = false;
+                                settings_panel_animating_ = true;
+                                settings_panel_anim_start_ = std::chrono::steady_clock::now();
+                            }
+                            if (hit(settings_toggle_usb_btn_)) {
+                                settings_.android_auto_usb = !settings_.android_auto_usb;
+                                settings_.save();
+                            }
+                            if (hit(settings_toggle_softkbd_btn_)) {
+                                settings_.android_hide_soft_keyboard = !settings_.android_hide_soft_keyboard;
+                                settings_.save();
+                            }
+                            if (hit(settings_toggle_kbd_btn_)) {
+                                settings_.android_keyboard_on = !settings_.android_keyboard_on;
+                                android_kbd_on_ = settings_.android_keyboard_on;
+                                android_ime_shown_.clear();
+                                settings_.save();
+                            }
+                            if (hit(settings_toggle_scroff_btn_)) {
+                                settings_.android_screen_off = !settings_.android_screen_off;
+                                settings_.save();
+                                // Takes effect right away on the phone being mirrored.
+                                if (android_input_active_()) {
+                                    android_screen_off_ = settings_.android_screen_off;
+                                    AndroidInput in;
+                                    in.kind = AndroidInput::Kind::ScreenPower;
+                                    in.action = android_screen_off_ ? 0 : 1;
+                                    android_input_fn_(in);
+                                }
+                            }
+                            {
+                                static const int res_vals[3] = {0, 1920, 1280};
+                                static const int fps_vals[3] = {0, 60, 30};
+                                static const int ios_vals[2] = {60, 30};
+                                for (int i = 0; i < 3; ++i) {
+                                    if (hit(settings_seg_res_btns_[i])) {
+                                        settings_.android_max_size = res_vals[i];
+                                        settings_.save();
+                                    }
+                                    if (hit(settings_seg_fps_btns_[i])) {
+                                        settings_.android_max_fps = fps_vals[i];
+                                        settings_.save();
+                                    }
+                                }
+                                for (int i = 0; i < 2; ++i) {
+                                    if (hit(settings_seg_ios_fps_btns_[i])) {
+                                        settings_.airplay_max_fps = ios_vals[i];
+                                        settings_.save();
+                                    }
+                                }
+                            }
                             for (auto& sw : settings_swatch_btns_) {
                                 if (in_rect(mx, my, sw.second.x, sw.second.y, sw.second.w, sw.second.h)) {
                                     static const uint8_t presets[][3] = {
@@ -5574,16 +5633,18 @@ void Renderer::draw_settings_panel() {
     int svw = (int)(phone_frame_.screen_width() * scale);
 
     // UI dimensions are derived from a phone-equivalent reference width so
-    // the Settings swatches/labels stay compact on tablet/desktop sources.
+    // the panel stays compact on tablet/desktop sources.
     int uw = ui_ref_width();
-    int pad      = std::max(10, uw / 18);
-    int row_gap  = std::max(6,  pad / 2);
-    int title_h  = std::max(14, uw / 22);
-    int label_h  = std::max(11, uw / 30);
-    int swatch   = std::max(22, uw / 14);
-    int sw_gap   = std::max(6,  swatch / 4);
+    int pad     = std::max(12, uw / 16);
+    int gap     = std::max(8,  pad * 2 / 3);
+    int title_h = std::max(15, uw / 20);
+    int label_h = std::max(11, uw / 30);
+    int note_h  = std::max(10, label_h * 4 / 5);
+    int row_pad = std::max(7,  label_h * 2 / 3);
+    int row_h   = label_h + row_pad * 2;
+    int tabs_h  = row_h - 2;
 
-    int panel_w = (std::min)((int)(svw * 0.86f), (int)(uw * 1.6f));
+    int panel_w = (std::min)((int)(svw * 0.9f), (int)(uw * 1.7f));
     int panel_x = svx + (svw - panel_w) / 2;
 
     // Bottom of island row
@@ -5592,281 +5653,243 @@ void Renderer::draw_settings_panel() {
     int island_bottom = svy + ipad + btn_sz + ipad * 2;
     int panel_y_target = island_bottom + pad / 2;
 
-    // Two rows of 3 swatches, then 2 toggle rows
-    const int N_PRESETS = 6;
-    static const uint8_t presets[N_PRESETS][3] = {
-        { 28,  28,  30},  // Dark titanium (default)
-        { 90,  90,  95},  // Graphite
-        { 36,  46,  72},  // Midnight blue
-        { 36,  60,  44},  // Forest green
-        { 80,  34,  34},  // Deep red
-        {110,  84,  46},  // Bronze
-    };
-
-    int swatches_per_row = 3;
-    int swatch_rows = (N_PRESETS + swatches_per_row - 1) / swatches_per_row;
-    int total_h = pad + title_h + row_gap
-                + swatch_rows * (swatch + row_gap)
-                + row_gap + label_h + row_gap            // toggle 1 (save)
-                + label_h + row_gap                       // toggle 2 (clipboard)
-                + label_h + row_gap                       // toggle 3 (Snagit)
-                + label_h + row_gap                       // toggle 4 (computer name)
-                + label_h + row_gap                       // toggle 5 (always on top)
-                + label_h + row_gap                       // toggle 7 (file log)
-                + label_h + row_gap                       // toggle 8 (webcam mirror)
-                + label_h + row_gap                       // toggle 9 (webcam in recording)
-                + label_h + row_gap                       // recording format row
-                + label_h + row_gap                       // toggle 10 (resize to height)
-                + label_h + row_gap                       // resize stepper row
-                + label_h + row_gap                       // toggle 11 (save original too)
-                + pad;
+    // Tabs: 0 General, 1 Phone, 2 Capture, 3 Webcam.
+    settings_tab_ = std::clamp(settings_tab_, 0, 3);
+    const int tab = settings_tab_;
+    const bool resize_on = settings_.screenshot_resize_enabled;
+    const int rows = tab == 0 ? 4 : tab == 1 ? 7 : tab == 2 ? (resize_on ? 7 : 5) : 2;
+    int total_h = pad + title_h + gap + tabs_h + gap + rows * row_h
+                + (tab == 1 ? gap + note_h : 0) + pad;
 
     // Slide animation
     int slide_offset = (int)((1.0f - settings_panel_anim_) * total_h * 0.3f);
     int panel_y = panel_y_target - slide_offset;
-    uint8_t alpha      = (uint8_t)(240 * settings_panel_anim_);
     uint8_t text_alpha = (uint8_t)(255 * settings_panel_anim_);
 
     settings_panel_rect_ = {panel_x, panel_y, panel_w, total_h};
 
-    // Rounded rect background (same recipe as info panel). BLENDMODE_NONE
-    // so the body + strips + corner discs cannot alpha-compound at their
-    // overlap.
-    int pr = std::max(6, pad / 2);
-    SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_NONE);
-    SDL_SetRenderDrawColor(sdl_renderer_, 30, 30, 34, alpha);
-    SDL_Rect body = {panel_x + pr, panel_y, panel_w - pr * 2, total_h};
-    SDL_RenderFillRect(sdl_renderer_, &body);
-    SDL_Rect ls = {panel_x, panel_y + pr, pr, total_h - pr * 2};
-    SDL_RenderFillRect(sdl_renderer_, &ls);
-    SDL_Rect rs = {panel_x + panel_w - pr, panel_y + pr, pr, total_h - pr * 2};
-    SDL_RenderFillRect(sdl_renderer_, &rs);
-    fill_circle(sdl_renderer_, panel_x + pr, panel_y + pr, pr);
-    fill_circle(sdl_renderer_, panel_x + panel_w - pr, panel_y + pr, pr);
-    fill_circle(sdl_renderer_, panel_x + pr, panel_y + total_h - pr, pr);
-    fill_circle(sdl_renderer_, panel_x + panel_w - pr, panel_y + total_h - pr, pr);
-    SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
+    // Only the controls of the visible tab can be clicked.
+    settings_swatch_btns_.clear();
+    settings_toggle_save_btn_ = settings_toggle_clip_btn_ = settings_toggle_snagit_btn_ = {};
+    settings_toggle_compname_btn_ = settings_toggle_aot_btn_ = settings_toggle_log_btn_ = {};
+    settings_toggle_webcam_mirror_btn_ = settings_toggle_webcam_record_btn_ = {};
+    settings_toggle_resize_btn_ = settings_toggle_save_original_btn_ = {};
+    settings_resize_minus_btn_ = settings_resize_plus_btn_ = {};
+    settings_fmt_mp4_btn_ = settings_fmt_gif_btn_ = {};
+    settings_toggle_usb_btn_ = settings_toggle_softkbd_btn_ = {};
+    settings_toggle_kbd_btn_ = settings_toggle_scroff_btn_ = {};
+    for (auto& b : settings_seg_res_btns_) b = {};
+    for (auto& b : settings_seg_fps_btns_) b = {};
+    for (auto& b : settings_seg_ios_fps_btns_) b = {};
 
-    auto draw_label = [&](const std::string& s, int font_h, int cx, int cy_top,
-                          uint8_t cr, uint8_t cg, uint8_t cb, bool centered) {
+    int mx, my;
+    SDL_GetMouseState(&mx, &my);
+
+    // Surfaces are opaque (BLENDMODE_NONE) so the pieces a rounded rect is
+    // built from cannot alpha-compound where they overlap.
+    SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_NONE);
+    auto surface = [&](int x, int y, int w, int h, int rad, uint8_t r, uint8_t g, uint8_t b) {
+        SDL_SetRenderDrawColor(sdl_renderer_, r, g, b, 255);
+        fill_round_rect(sdl_renderer_, x, y, w, h, rad);
+    };
+    // align: 0 left, 1 centred, 2 right (x is the anchor); y_mid is the
+    // vertical centre of the text.
+    auto text = [&](const std::string& s, int font_h, int x, int y_mid,
+                    uint8_t r, uint8_t g, uint8_t b, int align) {
         int tw = 0, th = 0;
-        SDL_Texture* tex = make_text_texture(sdl_renderer_, s, font_h, cr, cg, cb, &tw, &th);
+        SDL_Texture* tex = make_text_texture(sdl_renderer_, s, font_h, r, g, b, &tw, &th);
         if (!tex) return;
-        int x = centered ? (cx - tw / 2) : cx;
-        SDL_Rect dst = {x, cy_top, tw, th};
+        int tx = align == 1 ? x - tw / 2 : align == 2 ? x - tw : x;
+        SDL_Rect dst = {tx, y_mid - th / 2, tw, th};
         SDL_SetTextureAlphaMod(tex, text_alpha);
         SDL_RenderCopy(sdl_renderer_, tex, nullptr, &dst);
         SDL_DestroyTexture(tex);
     };
 
+    // Panel: hairline border + body.
+    int pr = std::max(10, pad * 4 / 5);
+    surface(panel_x - 1, panel_y - 1, panel_w + 2, total_h + 2, pr + 1, 64, 64, 72);
+    surface(panel_x, panel_y, panel_w, total_h, pr, 22, 22, 26);
+
     int cy = panel_y + pad;
-    draw_label("Settings", title_h, panel_x + panel_w / 2, cy, 230, 230, 235, true);
-    cy += title_h + row_gap;
 
-    // Swatches grid
-    settings_swatch_btns_.clear();
-    int grid_w = swatches_per_row * swatch + (swatches_per_row - 1) * sw_gap;
-    int grid_x = panel_x + (panel_w - grid_w) / 2;
-    for (int i = 0; i < N_PRESETS; i++) {
-        int row = i / swatches_per_row;
-        int col = i % swatches_per_row;
-        int sx = grid_x + col * (swatch + sw_gap);
-        int sy = cy + row * (swatch + row_gap);
-        // Filled swatch
-        SDL_SetRenderDrawColor(sdl_renderer_, presets[i][0], presets[i][1], presets[i][2], alpha);
-        SDL_Rect sr = {sx, sy, swatch, swatch};
-        SDL_RenderFillRect(sdl_renderer_, &sr);
-        // Selected ring if currently active
-        bool selected = (presets[i][0] == settings_.bezel_r &&
-                          presets[i][1] == settings_.bezel_g &&
-                          presets[i][2] == settings_.bezel_b);
-        if (selected) {
-            SDL_SetRenderDrawColor(sdl_renderer_, 255, 255, 255, text_alpha);
-            for (int t = 0; t < 2; t++) {
-                SDL_Rect r2 = {sx - 2 - t, sy - 2 - t, swatch + 4 + 2 * t, swatch + 4 + 2 * t};
-                SDL_RenderDrawRect(sdl_renderer_, &r2);
-            }
-        } else {
-            SDL_SetRenderDrawColor(sdl_renderer_, 90, 90, 95, text_alpha);
-            SDL_RenderDrawRect(sdl_renderer_, &sr);
+    // Header: title + close button.
+    text("Settings", title_h, panel_x + pad, cy + title_h / 2, 242, 242, 247, 0);
+    {
+        int sz = title_h;
+        settings_close_btn_ = {panel_x + panel_w - pad - sz, cy, sz, sz};
+        bool hov = in_rect(mx, my, settings_close_btn_.x - 4, settings_close_btn_.y - 4, sz + 8, sz + 8);
+        if (hov) surface(settings_close_btn_.x - 4, settings_close_btn_.y - 4, sz + 8, sz + 8,
+                         (sz + 8) / 2, 52, 52, 60);
+        uint8_t c = hov ? 255 : 170;
+        SDL_SetRenderDrawColor(sdl_renderer_, c, c, c, 255);
+        int in = sz / 4;
+        int x0 = settings_close_btn_.x + in, y0 = cy + in, x1 = settings_close_btn_.x + sz - in, y1 = cy + sz - in;
+        for (int t = 0; t <= 1; ++t) {
+            SDL_RenderDrawLine(sdl_renderer_, x0 + t, y0, x1 + t, y1);
+            SDL_RenderDrawLine(sdl_renderer_, x1 + t, y0, x0 + t, y1);
         }
-        settings_swatch_btns_.push_back({i, BtnRect{sx, sy, swatch, swatch}});
     }
-    cy += swatch_rows * (swatch + row_gap) + row_gap;
+    cy += title_h + gap;
 
-    // Toggle helper
-    auto draw_toggle = [&](const std::string& label, bool on, int row_y, int indent = 0) -> BtnRect {
-        int box = std::max(12, label_h + 2);
-        int row_x = panel_x + pad + indent;
-        // Checkbox box
-        SDL_SetRenderDrawColor(sdl_renderer_, 50, 50, 55, alpha);
-        SDL_Rect br = {row_x, row_y, box, box};
-        SDL_RenderFillRect(sdl_renderer_, &br);
-        SDL_SetRenderDrawColor(sdl_renderer_, 120, 120, 130, text_alpha);
-        SDL_RenderDrawRect(sdl_renderer_, &br);
-        if (on) {
-            // Check mark (two simple lines)
-            SDL_SetRenderDrawColor(sdl_renderer_, 90, 200, 130, text_alpha);
-            int cx0 = row_x + box / 5;
-            int cy0 = row_y + box / 2;
-            int cx1 = row_x + box * 2 / 5;
-            int cy1 = row_y + box * 4 / 5;
-            int cx2 = row_x + box * 4 / 5;
-            int cy2 = row_y + box / 5;
-            for (int t = -1; t <= 1; t++) {
-                SDL_RenderDrawLine(sdl_renderer_, cx0, cy0 + t, cx1, cy1 + t);
-                SDL_RenderDrawLine(sdl_renderer_, cx1, cy1 + t, cx2, cy2 + t);
-            }
+    // Tab bar: a pill track with the selected tab raised.
+    {
+        static const char* const names[4] = {"General", "Phone", "Capture", "Webcam"};
+        int track_x = panel_x + pad, track_w = panel_w - pad * 2;
+        surface(track_x, cy, track_w, tabs_h, tabs_h / 2, 36, 36, 42);
+        int tab_w = track_w / 4;
+        for (int i = 0; i < 4; ++i) {
+            int tx = track_x + i * tab_w;
+            settings_tab_btns_[i] = {tx, cy, tab_w, tabs_h};
+            bool sel = (i == tab);
+            bool hov = in_rect(mx, my, tx, cy, tab_w, tabs_h);
+            if (sel)      surface(tx + 2, cy + 2, tab_w - 4, tabs_h - 4, (tabs_h - 4) / 2, 80, 80, 94);
+            else if (hov) surface(tx + 2, cy + 2, tab_w - 4, tabs_h - 4, (tabs_h - 4) / 2, 46, 46, 54);
+            uint8_t c = sel ? 255 : 162;
+            text(names[i], label_h, tx + tab_w / 2, cy + tabs_h / 2, c, c, (uint8_t)(sel ? 255 : 172), 1);
         }
-        // Label to the right of the box
-        int label_x = row_x + box + std::max(6, box / 3);
-        draw_label(label, label_h, label_x,
-                   row_y + (box - label_h) / 2 - 1,
-                   220, 220, 225, false);
-        // Hit rect spans the full row (box + label) for easier clicking.
-        return BtnRect{row_x, row_y, panel_w - pad * 2 - indent, box};
+    }
+    cy += tabs_h + gap;
+
+    // Card holding the rows of the current tab.
+    const int card_x = panel_x + pad, card_w = panel_w - pad * 2;
+    const int inner = std::max(10, pad * 3 / 4);
+    surface(card_x, cy, card_w, rows * row_h, std::max(8, pr * 2 / 3), 32, 32, 38);
+
+    int row_i = 0;
+    // Starts a row: hover highlight + separator. Returns the row's top y.
+    auto begin_row = [&](bool hoverable) {
+        int y = cy + row_i * row_h;
+        if (hoverable && in_rect(mx, my, card_x, y, card_w, row_h))
+            surface(card_x + 3, y + 2, card_w - 6, row_h - 4, 6, 42, 42, 50);
+        if (row_i > 0) {
+            SDL_SetRenderDrawColor(sdl_renderer_, 48, 48, 56, 255);
+            SDL_RenderDrawLine(sdl_renderer_, card_x + inner, y, card_x + card_w - inner, y);
+        }
+        ++row_i;
+        return y;
+    };
+    // Label on the left, switch on the right; the whole row is clickable.
+    auto toggle = [&](const char* label, bool on) -> BtnRect {
+        int y = begin_row(true);
+        text(label, label_h, card_x + inner, y + row_h / 2, 228, 228, 233, 0);
+        int sh = label_h + 6, sw = sh * 9 / 5;
+        int sx = card_x + card_w - inner - sw, sy = y + (row_h - sh) / 2;
+        if (on) surface(sx, sy, sw, sh, sh / 2, 52, 199, 112);
+        else    surface(sx, sy, sw, sh, sh / 2, 70, 70, 80);
+        SDL_SetRenderDrawColor(sdl_renderer_, 250, 250, 252, 255);
+        fill_circle(sdl_renderer_, on ? sx + sw - sh / 2 : sx + sh / 2, sy + sh / 2, sh / 2 - 2);
+        return BtnRect{card_x, y, card_w, row_h};
+    };
+    // Label on the left, a segmented choice on the right.
+    auto segment = [&](const char* label, const char* const* opts, int n, int selected, BtnRect* out) {
+        int y = begin_row(false);
+        text(label, label_h, card_x + inner, y + row_h / 2, 228, 228, 233, 0);
+        int ph = label_h + 8, pw = label_h * 7 / 2 + 6;
+        int x0 = card_x + card_w - inner - n * pw, py = y + (row_h - ph) / 2;
+        surface(x0 - 2, py - 2, n * pw + 4, ph + 4, (ph + 4) / 2, 22, 22, 26);
+        for (int i = 0; i < n; ++i) {
+            int px = x0 + i * pw;
+            bool sel = (i == selected);
+            if (sel)                                   surface(px, py, pw, ph, ph / 2, 86, 86, 100);
+            else if (in_rect(mx, my, px, py, pw, ph))  surface(px, py, pw, ph, ph / 2, 44, 44, 52);
+            uint8_t c = sel ? 255 : 165;
+            text(opts[i], label_h, px + pw / 2, py + ph / 2, c, c, (uint8_t)(sel ? 255 : 175), 1);
+            out[i] = {px, py, pw, ph};
+        }
+    };
+    auto index_of = [](const int* vals, int n, int v) {
+        for (int i = 0; i < n; ++i) if (vals[i] == v) return i;
+        return -1;
     };
 
-    settings_toggle_save_btn_ = draw_toggle(
-        "Save screenshots to Pictures folder",
-        settings_.screenshot_save_to_folder, cy);
-    cy += label_h + row_gap;
-    settings_toggle_clip_btn_ = draw_toggle(
-        "Copy screenshots to clipboard",
-        settings_.screenshot_copy_to_clipboard, cy);
-    cy += label_h + row_gap;
-    settings_toggle_snagit_btn_ = draw_toggle(
-        "Open screenshots in Snagit Editor",
-        settings_.screenshot_open_in_snagit, cy);
-    cy += label_h + row_gap;
-    settings_toggle_compname_btn_ = draw_toggle(
-        "Identify as computer name (restart required)",
-        settings_.use_computer_name, cy);
-    cy += label_h + row_gap;
-    settings_toggle_aot_btn_ = draw_toggle(
-        "Always keep window on top",
-        settings_.always_on_top, cy);
-    cy += label_h + row_gap;
-    settings_toggle_log_btn_ = draw_toggle(
-        "Save log file to screenshots folder (this session)",
-        log_to_file_session_, cy);
-    cy += label_h + row_gap;
-    settings_toggle_webcam_mirror_btn_ = draw_toggle(
-        "Mirror webcam horizontally (selfie view)",
-        settings_.webcam_mirror_h, cy);
-    cy += label_h + row_gap;
-    settings_toggle_webcam_record_btn_ = draw_toggle(
-        "Include webcam in recordings",
-        settings_.webcam_include_in_recording, cy);
-    cy += label_h + row_gap;
-
-    // Recording format row — two pill buttons (MP4 / GIF) on the left so
-    // all interactive controls line up vertically with the swatch grid and
-    // checkbox column above; descriptive label sits to the right.
-    {
-        int row_x  = panel_x + pad;
-        int box    = std::max(12, label_h + 2);
-        auto draw_pill = [&](const std::string& label, bool sel,
-                             int px, int py, int pw, int ph) -> BtnRect {
-            if (sel) SDL_SetRenderDrawColor(sdl_renderer_, 90, 130, 200, alpha);
-            else     SDL_SetRenderDrawColor(sdl_renderer_, 50, 50, 55, alpha);
-            SDL_Rect br = {px, py, pw, ph};
-            SDL_RenderFillRect(sdl_renderer_, &br);
-            SDL_SetRenderDrawColor(sdl_renderer_, sel ? 200 : 100,
-                                                  sel ? 220 : 100,
-                                                  sel ? 255 : 110, text_alpha);
-            SDL_RenderDrawRect(sdl_renderer_, &br);
-            int tw = 0, th = 0;
-            SDL_Texture* tt = make_text_texture(sdl_renderer_, label, label_h,
-                                                sel ? 255 : 200,
-                                                sel ? 255 : 200,
-                                                sel ? 255 : 200,
-                                                &tw, &th);
-            if (tt) {
-                SDL_SetTextureAlphaMod(tt, text_alpha);
-                SDL_Rect td{px + (pw - tw) / 2, py + (ph - th) / 2, tw, th};
-                SDL_RenderCopy(sdl_renderer_, tt, nullptr, &td);
-                SDL_DestroyTexture(tt);
-            }
-            return BtnRect{px, py, pw, ph};
+    if (tab == 0) {
+        // Frame colour: round swatches, white ring on the current one.
+        static const uint8_t presets[6][3] = {
+            { 28,  28,  30},  // Dark titanium (default)
+            { 90,  90,  95},  // Graphite
+            { 36,  46,  72},  // Midnight blue
+            { 36,  60,  44},  // Forest green
+            { 80,  34,  34},  // Deep red
+            {110,  84,  46},  // Bronze
         };
-        int pill_w = std::max(48, label_h * 4);
-        int pill_gap = std::max(4, label_h / 3);
-        int pill_h = box;
-        int mp4_x = row_x;
-        int gif_x = mp4_x + pill_w + pill_gap;
-        settings_fmt_mp4_btn_ = draw_pill("MP4", settings_.record_format == 0,
-                                          mp4_x, cy, pill_w, pill_h);
-        settings_fmt_gif_btn_ = draw_pill("GIF", settings_.record_format == 1,
-                                          gif_x, cy, pill_w, pill_h);
-        // Label to the right of the pills.
-        int label_x = gif_x + pill_w + std::max(6, box / 3);
-        int lw = 0, lh = 0;
-        SDL_Texture* lt = make_text_texture(sdl_renderer_, "Recording format",
-                                            label_h, 220, 220, 225, &lw, &lh);
-        if (lt) {
-            SDL_SetTextureAlphaMod(lt, text_alpha);
-            SDL_Rect ld{label_x, cy + (pill_h - lh) / 2, lw, lh};
-            SDL_RenderCopy(sdl_renderer_, lt, nullptr, &ld);
-            SDL_DestroyTexture(lt);
+        int y = begin_row(false);
+        text("Frame colour", label_h, card_x + inner, y + row_h / 2, 228, 228, 233, 0);
+        int d = label_h + 8, sg = std::max(5, d / 4);
+        int x0 = card_x + card_w - inner - (6 * d + 5 * sg);
+        for (int i = 0; i < 6; ++i) {
+            int scx = x0 + i * (d + sg) + d / 2, scy = y + row_h / 2;
+            bool selected = (presets[i][0] == settings_.bezel_r &&
+                             presets[i][1] == settings_.bezel_g &&
+                             presets[i][2] == settings_.bezel_b);
+            if (selected) SDL_SetRenderDrawColor(sdl_renderer_, 250, 250, 252, 255);
+            else          SDL_SetRenderDrawColor(sdl_renderer_, 78, 78, 88, 255);
+            fill_circle(sdl_renderer_, scx, scy, d / 2);
+            SDL_SetRenderDrawColor(sdl_renderer_, presets[i][0], presets[i][1], presets[i][2], 255);
+            fill_circle(sdl_renderer_, scx, scy, d / 2 - (selected ? 2 : 1));
+            settings_swatch_btns_.push_back({i, BtnRect{scx - d / 2, scy - d / 2, d, d}});
         }
-    }
-    cy += label_h + row_gap * 2;
-
-    settings_toggle_resize_btn_ = draw_toggle(
-        "Resize screenshots to height (cm)",
-        settings_.screenshot_resize_enabled, cy);
-    cy += label_h + row_gap;
-
-    // Sub-settings of the toggle above, indented to read as children.
-    int sub_indent = std::max(14, label_h);
-
-    // Height stepper: "-" / "X.X cm" / "+", steps of 0.5cm, [1.0, 30.0].
-    {
-        int row_x = panel_x + pad + sub_indent;
-        int box   = std::max(12, label_h + 2);
-        auto draw_step_pill = [&](const std::string& label, int px, int py, int pw, int ph) -> BtnRect {
-            SDL_SetRenderDrawColor(sdl_renderer_, 50, 50, 55, alpha);
-            SDL_Rect br = {px, py, pw, ph};
-            SDL_RenderFillRect(sdl_renderer_, &br);
-            SDL_SetRenderDrawColor(sdl_renderer_, 100, 100, 110, text_alpha);
-            SDL_RenderDrawRect(sdl_renderer_, &br);
-            int tw = 0, th = 0;
-            SDL_Texture* tt = make_text_texture(sdl_renderer_, label, label_h, 220, 220, 225, &tw, &th);
-            if (tt) {
-                SDL_SetTextureAlphaMod(tt, text_alpha);
-                SDL_Rect td{px + (pw - tw) / 2, py + (ph - th) / 2, tw, th};
-                SDL_RenderCopy(sdl_renderer_, tt, nullptr, &td);
-                SDL_DestroyTexture(tt);
-            }
-            return BtnRect{px, py, pw, ph};
-        };
-        int step_h = box;
-        int minus_x = row_x;
-        settings_resize_minus_btn_ = draw_step_pill("-", minus_x, cy, step_h, step_h);
-        char cmbuf[16];
-        float cmv = settings_.screenshot_resize_height_cm;
-        if (std::abs(cmv - std::round(cmv)) < 0.01f) snprintf(cmbuf, sizeof(cmbuf), "%d cm", (int)std::lround(cmv));
-        else snprintf(cmbuf, sizeof(cmbuf), "%.1f cm", cmv);
-        int val_w = std::max(48, label_h * 3);
-        int val_x = minus_x + step_h + std::max(4, box / 3);
-        int vtw = 0, vth = 0;
-        SDL_Texture* vtex = make_text_texture(sdl_renderer_, cmbuf, label_h, 230, 230, 235, &vtw, &vth);
-        if (vtex) {
-            SDL_SetTextureAlphaMod(vtex, text_alpha);
-            SDL_Rect vd{val_x + (val_w - vtw) / 2, cy + (step_h - vth) / 2, vtw, vth};
-            SDL_RenderCopy(sdl_renderer_, vtex, nullptr, &vd);
-            SDL_DestroyTexture(vtex);
+        settings_toggle_aot_btn_      = toggle("Always on top", settings_.always_on_top);
+        settings_toggle_compname_btn_ = toggle("Show computer name (after restart)", settings_.use_computer_name);
+        settings_toggle_log_btn_      = toggle("Save a log file this session", log_to_file_session_);
+    } else if (tab == 1) {
+        settings_toggle_usb_btn_     = toggle("Connect USB phones automatically", settings_.android_auto_usb);
+        settings_toggle_kbd_btn_     = toggle("Type on the phone from this keyboard", settings_.android_keyboard_on);
+        settings_toggle_softkbd_btn_ = toggle("Hide the phone's own keyboard", settings_.android_hide_soft_keyboard);
+        settings_toggle_scroff_btn_  = toggle("Turn the phone screen off", settings_.android_screen_off);
+        static const char* const res_opts[3] = {"Max", "1920", "1280"};
+        static const int res_vals[3] = {0, 1920, 1280};
+        segment("Android resolution", res_opts, 3,
+                index_of(res_vals, 3, settings_.android_max_size), settings_seg_res_btns_);
+        static const char* const fps_opts[3] = {"Max", "60", "30"};
+        static const int fps_vals[3] = {0, 60, 30};
+        segment("Android frame rate", fps_opts, 3,
+                index_of(fps_vals, 3, settings_.android_max_fps), settings_seg_fps_btns_);
+        static const char* const ios_opts[2] = {"60", "30"};
+        static const int ios_vals[2] = {60, 30};
+        segment("iPhone frame rate", ios_opts, 2,
+                index_of(ios_vals, 2, settings_.airplay_max_fps), settings_seg_ios_fps_btns_);
+        text("Applies the next time a phone connects.", note_h, card_x + inner,
+             cy + rows * row_h + gap + note_h / 2, 132, 132, 142, 0);
+    } else if (tab == 2) {
+        settings_toggle_save_btn_   = toggle("Save screenshots to Pictures", settings_.screenshot_save_to_folder);
+        settings_toggle_clip_btn_   = toggle("Copy screenshots to clipboard", settings_.screenshot_copy_to_clipboard);
+        settings_toggle_snagit_btn_ = toggle("Open screenshots in Snagit", settings_.screenshot_open_in_snagit);
+        static const char* const fmt_opts[2] = {"MP4", "GIF"};
+        BtnRect fmt[2];
+        segment("Recording format", fmt_opts, 2, settings_.record_format, fmt);
+        settings_fmt_mp4_btn_ = fmt[0];
+        settings_fmt_gif_btn_ = fmt[1];
+        settings_toggle_resize_btn_ = toggle("Resize screenshots", resize_on);
+        if (resize_on) {
+            // Height stepper: "-" / "X.X cm" / "+".
+            int y = begin_row(false);
+            text("Height", label_h, card_x + inner, y + row_h / 2, 228, 228, 233, 0);
+            int bs = label_h + 8, val_w = label_h * 5;
+            int plus_x = card_x + card_w - inner - bs, by = y + (row_h - bs) / 2;
+            int minus_x = plus_x - val_w - bs;
+            auto step = [&](const char* sym, int bx) -> BtnRect {
+                bool hov = in_rect(mx, my, bx, by, bs, bs);
+                if (hov) surface(bx, by, bs, bs, bs / 2, 86, 86, 100);
+                else     surface(bx, by, bs, bs, bs / 2, 58, 58, 68);
+                text(sym, label_h, bx + bs / 2, by + bs / 2, 240, 240, 245, 1);
+                return BtnRect{bx, by, bs, bs};
+            };
+            settings_resize_minus_btn_ = step("-", minus_x);
+            settings_resize_plus_btn_  = step("+", plus_x);
+            char cmbuf[16];
+            float cmv = settings_.screenshot_resize_height_cm;
+            if (std::abs(cmv - std::round(cmv)) < 0.01f) snprintf(cmbuf, sizeof(cmbuf), "%d cm", (int)std::lround(cmv));
+            else snprintf(cmbuf, sizeof(cmbuf), "%.1f cm", cmv);
+            text(cmbuf, label_h, minus_x + bs + val_w / 2, y + row_h / 2, 236, 236, 241, 1);
+            settings_toggle_save_original_btn_ = toggle("Keep the original too", settings_.screenshot_save_original_too);
         }
-        int plus_x = val_x + val_w + std::max(4, box / 3);
-        settings_resize_plus_btn_ = draw_step_pill("+", plus_x, cy, step_h, step_h);
+    } else {
+        settings_toggle_webcam_mirror_btn_ = toggle("Mirror the webcam", settings_.webcam_mirror_h);
+        settings_toggle_webcam_record_btn_ = toggle("Show the webcam in recordings", settings_.webcam_include_in_recording);
     }
-    cy += label_h + row_gap;
 
-    settings_toggle_save_original_btn_ = draw_toggle(
-        "Also save original full-size image",
-        settings_.screenshot_save_original_too, cy, sub_indent);
-    cy += label_h + row_gap;
+    SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
 }
 
 void Renderer::clear_log_row_cache() {

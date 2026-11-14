@@ -58,6 +58,13 @@ struct Settings {
     // PC keyboard is used instead). Applies from the next connection.
     bool android_hide_soft_keyboard = true;
 
+    // Send PC typing to the phone as soon as an Android phone is mirrored
+    // (same as pressing Ctrl+K).
+    bool android_keyboard_on = false;
+
+    // Switch the phone's own display off while it is mirrored (Ctrl+O).
+    bool android_screen_off = false;
+
     // Stream quality. Defaults ask for the most each side can deliver.
     // Android (scrcpy): longest side in pixels and frames per second,
     // 0 = no limit (the phone's native resolution / refresh rate).
