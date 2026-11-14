@@ -204,6 +204,8 @@ Copy-Item -Path (Join-Path $releaseDir '*') -Destination $stage -Recurse -Force
 
 # Add the third-party licenses next to the EXE.
 Copy-Item (Join-Path $installerDir 'THIRD_PARTY_LICENSES.txt') $stage -Force
+Copy-Item (Join-Path $root 'resources\fonts\OFL.txt') (Join-Path $stage 'LICENSE-PlusJakartaSans.txt') -Force
+Copy-Item (Join-Path $root 'resources\fonts\LUCIDE-LICENSE.txt') (Join-Path $stage 'LICENSE-Lucide.txt') -Force
 
 # ---------- 3b. VC++ runtime DLLs (vcruntime140.dll / msvcp140.dll) ----------
 # These are not redistributed by vcpkg's applocal, so the EXE will fail on

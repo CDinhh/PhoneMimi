@@ -700,8 +700,8 @@ void tex_cache_trim() {
     m.clear();
 }
 
-// Segoe Fluent Icons ships with Windows 11; Windows 10 has Segoe MDL2 Assets
-// (same code points for everything used here).
+// Lucide is embedded; if it fails to register, draw_glyph maps the Lucide
+// code points onto Segoe Fluent Icons (Windows 11) / Segoe MDL2 Assets.
 const wchar_t* icon_font_name() {
     if (g_lucide_ok) return L"lucide";   // embedded lucide-static 0.469.0
     static const wchar_t* name = []() -> const wchar_t* {
@@ -718,6 +718,20 @@ const wchar_t* icon_font_name() {
 // Draws icon-font glyph `cp` centred on (cx, cy), `px` pixels tall.
 static void draw_glyph(SDL_Renderer* r, wchar_t cp, int cx, int cy, int px,
                        uint8_t cr, uint8_t cg, uint8_t cb, uint8_t ca) {
+    if (!g_lucide_ok) {
+        static const std::pair<wchar_t, wchar_t> to_segoe[] = {
+            {0xE166, 0xE8EA}, {0xE157, 0xE713}, {0xE1B1, 0xE711}, {0xE0DC, 0xE8B7},
+            {0xE068, 0xE722}, {0xE16A, 0xE71A}, {0xE07A, 0xEA3A}, {0xE071, 0xE70D},
+            {0xE074, 0xE70E}, {0xE073, 0xE76C}, {0xE082, 0xE897}, {0xE1AD, 0xE701},
+            {0xE04D, 0xE72A}, {0xE13F, 0xE768}, {0xE131, 0xE769}, {0xE070, 0xE73E},
+            {0xE2A0, 0xE7A7}, {0xE197, 0xE8D2}, {0xE051, 0xE8AD}, {0xE0F7, 0xE7E6},
+            {0xE503, 0xE80A}, {0xE1DE, 0xED14}, {0xE359, 0xE88E},
+        };
+        wchar_t mapped = 0;
+        for (auto& m : to_segoe) if (m.first == cp) { mapped = m.second; break; }
+        if (!mapped) return;
+        cp = mapped;
+    }
     tex_cache_trim();
     auto& c = tex_cache()["g:" + std::to_string((int)cp) + ":" + std::to_string(px)];
     if (!c.tex)
@@ -5826,6 +5840,7 @@ void Renderer::draw_settings_panel() {
     auto segment = [&](const char* label, const char* const* opts, int n, int selected, BtnRect* out) {
         int y = begin_row(false);
         int ph = label_h + 10, pw = n * (label_h * 3 + 8) + 6;
+        pw = std::max(n * label_h * 2, std::min(pw, card_w - inner * 3 - label_h * 5));
         row_label(label, y, pw);
         ui_segment_(card_x + card_w - inner - pw, y + (row_h - ph) / 2, pw, ph, opts, n, selected,
                     std::string("settings.") + label, out, label_h * 9 / 10, text_alpha);
@@ -5835,7 +5850,10 @@ void Renderer::draw_settings_panel() {
     auto swatches = [&](const char* label, const uint8_t (*cols)[3], int n, int selected,
                         int id_base, const uint8_t* ring) {
         int y = begin_row(false);
-        int d = label_h + 8, sg = std::max(8, d / 2);
+        // Swatch size from the room left after a short label (small windows).
+        int room = card_w - inner * 3 - label_h * 5;
+        int d = std::clamp((int)(room / (n + (n - 1) * 0.5f)), 12, label_h + 8);
+        int sg = std::max(4, d / 2);
         row_label(label, y, n * d + (n - 1) * sg + 8);
         int x0 = card_x + card_w - inner - (n * d + (n - 1) * sg);
         SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
@@ -7349,12 +7367,28 @@ void Renderer::draw_android_panel() {
     int near_body_h = discover_visible > 0 ? discover_visible * dev_row_h : label_h + 16;
     int near_h = 6 + near_head_h + near_body_h + 6;
 
-    int field_block = label_h + 7 + field_h;
-    int status_h = status_lines.empty() ? 0 : (int)status_lines.size() * (label_h + 4) + gap;
-    int disc_h = label_h + 14;
-    int total_h = pad + std::max(tile, round_b) + gap + near_h + gap
+    int field_block = 0, status_h = 0, disc_h = 0, total_h = 0;
+    auto layout = [&]() {
+        near_body_h = discover_visible > 0 ? discover_visible * dev_row_h : label_h + 16;
+        near_h = 6 + near_head_h + near_body_h + 6;
+        field_block = label_h + 7 + field_h;
+        status_h = status_lines.empty() ? 0 : (int)status_lines.size() * (label_h + 4) + gap;
+        disc_h = label_h + 14;
+        total_h = pad + std::max(tile, round_b) + gap + near_h + gap
                 + field_block * 2 + gap + gap + status_h
                 + btn_h + gap + btn_h + 4 + disc_h + pad / 2;
+    };
+    layout();
+    // Small windows: list fewer nearby phones, then shrink the controls, so
+    // the panel stays inside the phone screen.
+    const int fit_h = svh - std::max(8, svh / 28) - 16;
+    while (total_h > fit_h && discover_visible > 1) { --discover_visible; layout(); }
+    if (total_h > fit_h) {
+        float k = std::max(0.6f, (float)fit_h / total_h);
+        field_h = (int)(field_h * k); btn_h = (int)(btn_h * k); dev_row_h = (int)(dev_row_h * k);
+        gap = std::max(4, (int)(gap * k)); pad = std::max(8, (int)(pad * k));
+        layout();
+    }
 
     int panel_x = svx + (svw - panel_w) / 2;
     int bottom_margin = std::max(8, svh / 28);
@@ -7384,10 +7418,13 @@ void Renderer::draw_android_panel() {
         fill_round_rect(sdl_renderer_, left, mid - tile / 2, tile, tile, tile / 3);
         draw_glyph(sdl_renderer_, lucide::Smartphone, left + tile / 2, mid, tile / 2,
                    ac.lr, ac.lg, ac.lb, text_alpha);
-        draw_text_mid(sdl_renderer_, "Add Android phone", title_h, 244, 246, 248, text_alpha,
-                      left + tile + tile / 3, mid, 0, 700);
         android_close_btn_ = {panel_x + panel_w - pad - round_b, mid - round_b / 2, round_b, round_b};
         android_help_btn_  = {android_close_btn_.x - round_b - 6, mid - round_b / 2, round_b, round_b};
+        int title_x = left + tile + tile / 3;
+        draw_text_mid(sdl_renderer_, "Add Android phone",
+                      fit_text_px(sdl_renderer_, "Add Android phone", title_h,
+                                  android_help_btn_.x - 6 - title_x, 700),
+                      244, 246, 248, text_alpha, title_x, mid, 0, 700);
         ui_round_btn_(android_help_btn_, lucide::CircleHelp, hov(android_help_btn_));
         ui_round_btn_(android_close_btn_, lucide::X, hov(android_close_btn_));
         cy += hh + gap;
@@ -8105,10 +8142,7 @@ inline bool make_text_rgba_buffer(const std::string& text, int font_height,
     if (text.empty() || font_height <= 0) return false;
     HDC hdc = CreateCompatibleDC(nullptr);
     if (!hdc) return false;
-    HFONT font = CreateFontA(
-        -font_height, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
-        CLEARTYPE_NATURAL_QUALITY, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
+    HFONT font = make_ui_font(font_height, 500);   // same face as the on-screen preview
     HFONT old_font = (HFONT)SelectObject(hdc, font);
     SIZE sz;
     GetTextExtentPoint32A(hdc, text.c_str(), (int)text.size(), &sz);

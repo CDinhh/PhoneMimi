@@ -65,8 +65,8 @@ a Release build before tagging.
   in [CMakeLists.txt](CMakeLists.txt). It feeds `OPM_VERSION_{MAJOR,MINOR,PATCH}`
   compile defs and is parsed by [package.ps1](package.ps1) for the MSI name.
   When bumping it, **also add a row to the version-history table in
-  [README.md](README.md)** — the in-app "Version history" panel (`V`) is
-  rendered from that same table.
+  [README.md](README.md)** and to the in-app "Version history" panel (`V`),
+  which is hard-coded in `Renderer::init` (src/media/renderer.cpp).
 - **Logging:** plain `std::cout` / `std::cerr` with a `[Module] ` prefix
   (`[App]`, `[AirPlay]`, `[Shutdown]`, `[CRASH]`, …). `opm::LogBuffer` tees
   stdout/stderr into the in-app log viewer (`L` key); do not introduce a
