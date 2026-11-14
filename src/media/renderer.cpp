@@ -6947,8 +6947,8 @@ bool Renderer::android_forward_key_(const SDL_Event& ev) {
                 }
                 return true;
             case SDLK_v:
-                if (!android_kbd_on_) return false;
                 if (down && !ev.key.repeat) {
+                    android_ime_shown_.clear();
                     char* clip = SDL_GetClipboardText();
                     if (clip && *clip) {
                         AndroidInput in;
