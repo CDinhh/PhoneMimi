@@ -924,7 +924,11 @@ bool MiracastReceiver::start(const Config& config) {
                 DispatchMessage(&msg);
             }
 
-            impl_->publisher.Stop();
+            // Stop() throws when the publisher already aborted (PC without
+            // Wi-Fi Direct). Letting that reach the handlers below touches
+            // init_promise, which died when start() returned, and the
+            // process then hangs on exit.
+            try { impl_->publisher.Stop(); } catch (...) {}
             winrt::uninit_apartment();
 
         } catch (const winrt::hresult_error& ex) {

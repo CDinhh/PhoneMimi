@@ -112,13 +112,13 @@ static uint32_t get_local_ipv4() {
     std::vector<uint8_t> buf(buf_len);
     auto* addrs = reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buf.data());
     ULONG ret = GetAdaptersAddresses(AF_INET,
-        GAA_FLAG_SKIP_DNS_SERVER | GAA_FLAG_SKIP_MULTICAST,
+        GAA_FLAG_SKIP_DNS_SERVER | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_INCLUDE_GATEWAYS,
         nullptr, addrs, &buf_len);
     if (ret == ERROR_BUFFER_OVERFLOW) {
         buf.resize(buf_len);
         addrs = reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buf.data());
         ret = GetAdaptersAddresses(AF_INET,
-            GAA_FLAG_SKIP_DNS_SERVER | GAA_FLAG_SKIP_MULTICAST,
+            GAA_FLAG_SKIP_DNS_SERVER | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_INCLUDE_GATEWAYS,
             nullptr, addrs, &buf_len);
     }
     if (ret != NO_ERROR) return 0;
