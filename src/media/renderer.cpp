@@ -5573,6 +5573,77 @@ void Renderer::ui_segment_(int x, int y, int w, int h, const char* const* opts, 
     }
 }
 
+void Renderer::ui_field_(const BtnRect& r, const std::string& val, const char* placeholder,
+                         bool focused, uint8_t alpha) {
+    const Accent& ac = accent_for(settings_.accent_color);
+    int rad = std::min(14, r.h / 3);
+    if (focused) {
+        SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(sdl_renderer_, ac.r, ac.g, ac.b, 46);
+        fill_round_rect(sdl_renderer_, r.x - 4, r.y - 4, r.w + 8, r.h + 8, rad + 4);
+    }
+    SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_NONE);
+    if (focused) SDL_SetRenderDrawColor(sdl_renderer_, ac.lr, ac.lg, ac.lb, 255);
+    else         SDL_SetRenderDrawColor(sdl_renderer_, 34, 38, 46, 255);
+    fill_round_rect(sdl_renderer_, r.x - 1, r.y - 1, r.w + 2, r.h + 2, rad + 1);
+    SDL_SetRenderDrawColor(sdl_renderer_, 11, 13, 18, 255);
+    fill_round_rect(sdl_renderer_, r.x, r.y, r.w, r.h, rad);
+
+    int font = std::max(11, r.h * 42 / 100);
+    bool ph = val.empty();
+    const std::string& shown = ph ? std::string(placeholder) : val;
+    int tx = r.x + std::max(10, r.h / 3);
+    if (ph) draw_text_mid(sdl_renderer_, shown, font, 85, 96, 116, alpha, tx, r.y + r.h / 2, 0);
+    else    draw_text_mid(sdl_renderer_, shown, font, 244, 246, 248, alpha, tx, r.y + r.h / 2, 0);
+    if (focused && (SDL_GetTicks() / 500) % 2 == 0) {
+        int tw = 0, th = 0;
+        if (!ph) measure_text_c(sdl_renderer_, val, font, &tw, &th);
+        SDL_SetRenderDrawColor(sdl_renderer_, ac.lr, ac.lg, ac.lb, 255);
+        SDL_Rect cur = {tx + tw + 1, r.y + r.h / 4, 2, r.h / 2};
+        SDL_RenderFillRect(sdl_renderer_, &cur);
+    }
+}
+
+void Renderer::ui_pill_(const BtnRect& r, const char* label, wchar_t icon, bool primary,
+                        bool hover, uint8_t alpha) {
+    const Accent& ac = accent_for(settings_.accent_color);
+    int rad = r.h / 2;
+    int font = std::max(11, r.h * 36 / 100);
+    if (primary) {
+        SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_NONE);
+        if (hover) SDL_SetRenderDrawColor(sdl_renderer_, ac.lr, ac.lg, ac.lb, 255);
+        else       SDL_SetRenderDrawColor(sdl_renderer_, ac.r, ac.g, ac.b, 255);
+        fill_round_rect(sdl_renderer_, r.x, r.y, r.w, r.h, rad);
+        SDL_SetRenderDrawColor(sdl_renderer_, ac.lr, ac.lg, ac.lb, 255);
+        SDL_RenderDrawLine(sdl_renderer_, r.x + rad, r.y, r.x + r.w - 1 - rad, r.y);
+        uint8_t ink = ac.dark_ink ? 14 : 255;
+        draw_text_mid(sdl_renderer_, label, font, ink, ink, ink, alpha, r.x + r.h * 6 / 10,
+                      r.y + r.h / 2, 0, 700);
+        // Trailing arrow in its own circle; nudges right on hover.
+        int d = r.h - 12, ccx = r.x + r.w - 6 - d / 2, ccy = r.y + r.h / 2;
+        SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(sdl_renderer_, ac.dark_ink ? 0 : 255, ac.dark_ink ? 0 : 255,
+                               ac.dark_ink ? 0 : 255, ac.dark_ink ? 36 : 46);
+        fill_circle(sdl_renderer_, ccx, ccy, d / 2);
+        draw_glyph(sdl_renderer_, lucide::ArrowRight, ccx + (hover ? 2 : 0), ccy, d * 11 / 20,
+                   ink, ink, ink, alpha);
+        return;
+    }
+    SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_NONE);
+    SDL_SetRenderDrawColor(sdl_renderer_, 44, 48, 56, 255);
+    fill_round_rect(sdl_renderer_, r.x, r.y, r.w, r.h, rad);
+    if (hover) SDL_SetRenderDrawColor(sdl_renderer_, 40, 44, 53, 255);
+    else       SDL_SetRenderDrawColor(sdl_renderer_, 30, 33, 40, 255);
+    fill_round_rect(sdl_renderer_, r.x + 1, r.y + 1, r.w - 2, r.h - 2, rad - 1);
+    int tw = 0, th = 0;
+    measure_text_c(sdl_renderer_, label, font, &tw, &th, 600);
+    int ipx = icon ? font * 5 / 4 : 0, igap = icon ? font / 2 : 0;
+    int x0 = r.x + (r.w - (ipx + igap + tw)) / 2;
+    if (icon) draw_glyph(sdl_renderer_, icon, x0 + ipx / 2, r.y + r.h / 2, ipx, 230, 234, 240, alpha);
+    draw_text_mid(sdl_renderer_, label, font, 230, 234, 240, alpha, x0 + ipx + igap,
+                  r.y + r.h / 2, 0, 600);
+}
+
 void Renderer::draw_settings_panel() {
     if (frame_dst_w_ == 0) return;
 
@@ -6366,8 +6437,6 @@ void Renderer::show_android_panel() {
     else                                       android_focus_ = 2;
     {
         std::lock_guard lk(android_status_mutex_);
-        if (android_status_.empty())
-            android_status_ = "* required. Press ? for setup help.";
     }
     SDL_StartTextInput();
     start_android_discovery();
@@ -7186,432 +7255,232 @@ void Renderer::draw_android_panel() {
         return;
     }
 
-    // Cap panel width using the phone-equivalent reference so the dialog
-    // (and every glyph derived from `panel_w`) stays compact when mirroring
-    // a tablet/desktop source. Same recipe as the info/version/settings
-    // panels — see ui_ref_width().
+    // Sizes follow the phone-equivalent reference (ui_ref_width) so the
+    // dialog stays compact on tablet/desktop sources.
     int uw = ui_ref_width();
-    int panel_w = std::min((int)(svw * 0.85f), (int)(uw * 1.6f));
-    int pad     = std::max(10, panel_w / 22);
-    int label_h = std::max(14, panel_w / 26);
-    int field_h = std::max(28, panel_w / 12);
-    int btn_h   = std::max(28, panel_w / 11);
-    int gap     = std::max(6, pad / 2);
+    int panel_w = std::min((int)(svw * 0.88f), (int)(uw * 1.7f));
+    int pad     = std::max(14, panel_w / 18);
+    int label_h = std::max(12, panel_w / 30);
+    int field_h = std::max(32, panel_w / 10);
+    int btn_h   = std::max(36, panel_w / 9);
+    int gap     = std::max(8, pad * 2 / 3);
+    int title_h = std::max(16, panel_w / 20);
+    int tile    = title_h * 9 / 5;            // header icon tile
+    int round_b = title_h + 10;               // help / close buttons
 
-    int title_h = std::max(20, panel_w / 16);
-
-    // Pre-wrap the status text so total_h grows with longer error messages
-    // (otherwise multi-line failures get clipped or the buttons drift off
-    // the bottom of the rounded panel).
+    // Status text, word-wrapped to the panel width (errors can be long).
     std::vector<std::string> status_lines;
     bool status_err = false;
     {
-        std::string s;
+        std::string st;
         {
             std::lock_guard lk(android_status_mutex_);
-            s = android_status_;
+            st = android_status_;
             status_err = android_status_is_error_;
         }
-        if (!s.empty()) {
-            int max_w = panel_w - pad * 2;
-            uint8_t cr = status_err ? 230 : 140;
-            uint8_t cg = status_err ? 110 : 200;
-            uint8_t cb = status_err ? 110 : 140;
-            std::vector<std::string> words;
-            {
-                std::string cur;
-                for (char c : s) {
-                    if (c == ' ' || c == '\n') {
-                        if (!cur.empty()) { words.push_back(cur); cur.clear(); }
-                    } else cur.push_back(c);
-                }
-                if (!cur.empty()) words.push_back(cur);
-            }
-            std::string line;
-            for (auto& w : words) {
-                std::string trial = line.empty() ? w : line + " " + w;
-                int tw = 0, th = 0;
-                SDL_Texture* probe = make_text_texture(sdl_renderer_, trial,
-                                                       label_h, cr, cg, cb,
-                                                       &tw, &th);
-                if (probe) SDL_DestroyTexture(probe);
-                if (tw <= max_w || line.empty()) {
-                    line = trial;
-                } else {
-                    status_lines.push_back(line);
-                    line = w;
-                }
-            }
-            if (!line.empty()) status_lines.push_back(line);
+        int max_w = panel_w - pad * 2;
+        std::string line, word;
+        auto flush_word = [&]() {
+            if (word.empty()) return;
+            std::string trial = line.empty() ? word : line + " " + word;
+            int tw = 0, th = 0;
+            measure_text_c(sdl_renderer_, trial, label_h, &tw, &th);
+            if (tw <= max_w || line.empty()) line = trial;
+            else { status_lines.push_back(line); line = word; }
+            word.clear();
+        };
+        for (char c : st) {
+            if (c == ' ' || c == '\n') flush_word();
+            else word.push_back(c);
         }
+        flush_word();
+        if (!line.empty()) status_lines.push_back(line);
     }
-    int status_rows = std::max<int>(1, (int)status_lines.size());
 
-    // Snapshot the discovered devices once for this draw call so the
-    // height calculation and the row rendering use identical data.
+    // Discovered devices, snapshotted once so layout and drawing agree.
     std::vector<DiscoveredAndroidDevice> discovered_snapshot;
     {
         std::lock_guard lk(android_discovered_mutex_);
         discovered_snapshot = android_discovered_;
     }
-    // Cap the visible list so the panel does not bloat past the screen.
     const int max_discover_rows = 3;
-    int discover_visible = std::min<int>((int)discovered_snapshot.size(),
-                                         max_discover_rows);
-    int discover_row_h = field_h - 4;
-    // Always reserve one row's worth of space (either real entries OR the
-    // "Scanning..." placeholder while the list is still empty).
-    int discover_rows_height = (discover_visible > 0)
-        ? discover_visible * (discover_row_h + 4) - 4
-        : label_h;
-    int discover_section_h = label_h + 4 + discover_rows_height + gap;
+    int discover_visible = std::min<int>((int)discovered_snapshot.size(), max_discover_rows);
+    int dev_row_h = std::max(field_h + 6, label_h * 3);
+    int near_head_h = label_h + 14;
+    int near_body_h = discover_visible > 0 ? discover_visible * dev_row_h : label_h + 16;
+    int near_h = 6 + near_head_h + near_body_h + 6;
 
-    // Extra breathing room below the buttons, on top of the normal `pad`,
-    // so the Connect/Disconnect row visibly sits above the panel's bottom
-    // edge instead of touching it.
-    int btn_bottom_pad = std::max(10, pad);
-    int total_h = pad + title_h + gap*2
-                + discover_section_h
-                + (label_h + 6 + field_h + gap) * 2   // 2 rows of 2 fields
-                + label_h * status_rows + gap            // status line(s)
-                + btn_h + gap                            // QR pairing button row
-                + btn_h + pad + btn_bottom_pad;
+    int field_block = label_h + 7 + field_h;
+    int status_h = status_lines.empty() ? 0 : (int)status_lines.size() * (label_h + 4) + gap;
+    int disc_h = label_h + 14;
+    int total_h = pad + std::max(tile, round_b) + gap + near_h + gap
+                + field_block * 2 + gap + gap + status_h
+                + btn_h + gap + btn_h + 4 + disc_h + pad / 2;
 
     int panel_x = svx + (svw - panel_w) / 2;
-    // Center vertically on the phone screen, then clamp so we keep a small
-    // breathing margin below the buttons inside the frame.
     int bottom_margin = std::max(8, svh / 28);
     int panel_y = svy + (svh - total_h) / 2 + svh / 18;
     if (panel_y + total_h > svy + svh - bottom_margin)
         panel_y = svy + svh - total_h - bottom_margin;
-    if (panel_y < svy + 4) panel_y = svy + 4;
-    int slide_off = (int)((1.0f - android_panel_anim_) * 30);
-    panel_y -= slide_off;
-    uint8_t alpha = (uint8_t)(255 * android_panel_anim_);
+    if (panel_y < svy + 8) panel_y = svy + 8;
+    panel_y -= (int)((1.0f - android_panel_anim_) * 30);
     uint8_t text_alpha = (uint8_t)(255 * android_panel_anim_);
 
     android_panel_rect_ = {panel_x, panel_y, panel_w, total_h};
 
-    // Rounded background — same recipe as info panel
-    int pr = std::max(8, pad / 2);
-    SDL_SetRenderDrawColor(sdl_renderer_, 30, 30, 34, alpha);
-    SDL_Rect body = {panel_x + pr, panel_y, panel_w - pr*2, total_h};
-    SDL_RenderFillRect(sdl_renderer_, &body);
-    SDL_Rect ls = {panel_x, panel_y + pr, pr, total_h - pr*2};
-    SDL_RenderFillRect(sdl_renderer_, &ls);
-    SDL_Rect rs = {panel_x + panel_w - pr, panel_y + pr, pr, total_h - pr*2};
-    SDL_RenderFillRect(sdl_renderer_, &rs);
-    fill_circle(sdl_renderer_, panel_x + pr, panel_y + pr, pr);
-    fill_circle(sdl_renderer_, panel_x + panel_w - pr, panel_y + pr, pr);
-    fill_circle(sdl_renderer_, panel_x + pr, panel_y + total_h - pr, pr);
-    fill_circle(sdl_renderer_, panel_x + panel_w - pr, panel_y + total_h - pr, pr);
+    int mx, my;
+    SDL_GetMouseState(&mx, &my);
+    const Accent& ac = accent_for(settings_.accent_color);
+    auto hov = [&](const BtnRect& r) { return in_rect(mx, my, r.x, r.y, r.w, r.h); };
 
+    ui_shell_(panel_x, panel_y, panel_w, total_h, std::max(14, pad));
     int cy = panel_y + pad;
+    int left = panel_x + pad, inner_w = panel_w - pad * 2;
 
-    // Title
+    // Header: icon tile, title, help + close.
     {
-        int tw = 0, th = 0;
-        SDL_Texture* tex = make_text_texture(sdl_renderer_, "Add Android phone",
-            title_h, 235, 235, 240, &tw, &th);
-        if (tex) {
-            int dx = panel_x + (panel_w - tw) / 2;
-            SDL_Rect d = {dx, cy, tw, th};
-            SDL_SetTextureAlphaMod(tex, text_alpha);
-            SDL_RenderCopy(sdl_renderer_, tex, nullptr, &d);
-            SDL_DestroyTexture(tex);
-        }
-        cy += title_h + gap*2;
+        int hh = std::max(tile, round_b), mid = cy + hh / 2;
+        SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(sdl_renderer_, ac.r, ac.g, ac.b, 42);
+        fill_round_rect(sdl_renderer_, left, mid - tile / 2, tile, tile, tile / 3);
+        draw_glyph(sdl_renderer_, lucide::Smartphone, left + tile / 2, mid, tile / 2,
+                   ac.lr, ac.lg, ac.lb, text_alpha);
+        draw_text_mid(sdl_renderer_, "Add Android phone", title_h, 244, 246, 248, text_alpha,
+                      left + tile + tile / 3, mid, 0, 700);
+        android_close_btn_ = {panel_x + panel_w - pad - round_b, mid - round_b / 2, round_b, round_b};
+        android_help_btn_  = {android_close_btn_.x - round_b - 6, mid - round_b / 2, round_b, round_b};
+        ui_round_btn_(android_help_btn_, lucide::CircleHelp, hov(android_help_btn_));
+        ui_round_btn_(android_close_btn_, lucide::X, hov(android_close_btn_));
+        cy += hh + gap;
     }
 
-    // Close button (small × top-right)
-    {
-        int sz = title_h;
-        android_close_btn_ = {panel_x + panel_w - sz - pad/2, panel_y + pad/2, sz, sz};
-        int tw=0, th=0;
-        SDL_Texture* tex = make_text_texture(sdl_renderer_, "x", sz, 200, 200, 200, &tw, &th);
-        if (tex) {
-            SDL_Rect d = {android_close_btn_.x + (sz-tw)/2,
-                          android_close_btn_.y + (sz-th)/2, tw, th};
-            SDL_SetTextureAlphaMod(tex, text_alpha);
-            SDL_RenderCopy(sdl_renderer_, tex, nullptr, &d);
-            SDL_DestroyTexture(tex);
-        }
-    }
-
-    // Help button (small ? to the left of the close button)
-    {
-        int sz = title_h;
-        android_help_btn_ = {android_close_btn_.x - sz - pad/4,
-                             panel_y + pad/2, sz, sz};
-        int tw=0, th=0;
-        SDL_Texture* tex = make_text_texture(sdl_renderer_, "?", sz,
-                                             200, 200, 200, &tw, &th);
-        if (tex) {
-            SDL_Rect d = {android_help_btn_.x + (sz-tw)/2,
-                          android_help_btn_.y + (sz-th)/2, tw, th};
-            SDL_SetTextureAlphaMod(tex, text_alpha);
-            SDL_RenderCopy(sdl_renderer_, tex, nullptr, &d);
-            SDL_DestroyTexture(tex);
-        }
-    }
-
-    // Helper for one labeled field. fx/fw lets the caller place the field
-    // at a custom horizontal slot, so we can pack two fields side by side.
-    auto draw_field = [&](int idx, const char* label, const std::string& val,
-                          const char* placeholder, int fx, int fw,
-                          bool advance_cy) {
-        // If the label ends with " *", render the base text in the normal
-        // muted colour and the trailing "*" in the same green used by the
-        // status hint, so users can see at a glance which fields are
-        // required.
-        std::string lab_str(label);
-        bool has_star = lab_str.size() >= 2 &&
-                        lab_str.compare(lab_str.size() - 2, 2, " *") == 0;
-        std::string base_str = has_star ? lab_str.substr(0, lab_str.size() - 1)
-                                        : lab_str;  // keep trailing space
-        int tw=0, th=0;
-        SDL_Texture* lab = make_text_texture(sdl_renderer_, base_str.c_str(),
-            label_h, 170, 170, 180, &tw, &th);
-        if (lab) {
-            // Clip the label to the field width so a long label can't bleed
-            // into the neighbouring column.
-            SDL_Rect d = {fx, cy, std::min(tw, fw), th};
-            SDL_SetTextureAlphaMod(lab, text_alpha);
-            SDL_RenderCopy(sdl_renderer_, lab, nullptr, &d);
-            SDL_DestroyTexture(lab);
-        }
-        if (has_star) {
-            int sw = 0, sh = 0;
-            SDL_Texture* st = make_text_texture(sdl_renderer_, "*", label_h,
-                140, 200, 140, &sw, &sh);
-            if (st) {
-                int sx = fx + std::min(tw, fw);
-                if (sx + sw > fx + fw) sx = fx + fw - sw;
-                SDL_Rect d = {sx, cy, sw, sh};
-                SDL_SetTextureAlphaMod(st, text_alpha);
-                SDL_RenderCopy(sdl_renderer_, st, nullptr, &d);
-                SDL_DestroyTexture(st);
-            }
-        }
-        int label_actual_h = (th > 0 ? th : label_h);
-        int field_y = cy + label_actual_h + 6;
-
-        SDL_Rect fr = {fx, field_y, fw, field_h};
-        android_field_rects_[idx] = {fr.x, fr.y, fr.w, fr.h};
-
-        bool focused = (android_focus_ == idx);
-        SDL_SetRenderDrawColor(sdl_renderer_, focused ? 55 : 45,
-                                              focused ? 55 : 45,
-                                              focused ? 65 : 50, alpha);
-        SDL_RenderFillRect(sdl_renderer_, &fr);
-        SDL_SetRenderDrawColor(sdl_renderer_,
-            focused ? 110 : 70, focused ? 150 : 70, focused ? 220 : 80, alpha);
-        SDL_RenderDrawRect(sdl_renderer_, &fr);
-
-        std::string display = val.empty() ? std::string(placeholder) : val;
-        bool is_placeholder = val.empty();
-        int vt_w=0, vt_h=0;
-        int font_h = field_h - 10;
-        SDL_Texture* vt = make_text_texture(sdl_renderer_, display, font_h,
-            is_placeholder ? 110 : 235,
-            is_placeholder ? 110 : 235,
-            is_placeholder ? 120 : 240, &vt_w, &vt_h);
-        if (vt) {
-            SDL_Rect d = {fr.x + 8, fr.y + (fr.h - vt_h)/2, vt_w, vt_h};
-            SDL_SetTextureAlphaMod(vt, text_alpha);
-            SDL_RenderCopy(sdl_renderer_, vt, nullptr, &d);
-            SDL_DestroyTexture(vt);
-        }
-        if (focused) {
-            using namespace std::chrono;
-            auto now = steady_clock::now();
-            auto ms = duration_cast<milliseconds>(now.time_since_epoch()).count();
-            if ((ms / 500) % 2 == 0) {
-                int cx = fr.x + 8 + (is_placeholder ? 0 : vt_w) + 1;
-                SDL_SetRenderDrawColor(sdl_renderer_, 220, 220, 230, text_alpha);
-                SDL_Rect cur = {cx, fr.y + 6, 2, fr.h - 12};
-                SDL_RenderFillRect(sdl_renderer_, &cur);
-            }
-        }
-        if (advance_cy) cy = field_y + field_h + gap;
-    };
-
-    // Two columns. Row 1 is "Wireless debugging screen" data (IP + Connect
-    // port shown side by side on the phone). Row 2 is the one-shot
-    // "Pair with device" popup data (pair port + pairing code).
-    int col_w = (panel_w - pad*2 - gap) / 2;
-    int col1_x = panel_x + pad;
-    int col2_x = col1_x + col_w + gap;
-
-    // ---- Discovered devices section ----
+    // Nearby: phones found over mDNS (Wireless debugging on).
     android_discover_btns_.clear();
     {
-        bool running = android_discover_running_.load();
-        std::string heading = "Discovered devices";
-        if (running) {
-            // Animated dot trail so the user sees the panel is actively
-            // looking, even between the (~1 s) mDNS poll cycles.
-            using namespace std::chrono;
-            auto ms = duration_cast<milliseconds>(
-                steady_clock::now().time_since_epoch()).count();
-            int dots = (int)((ms / 350) % 4);
-            heading += discovered_snapshot.empty() ? " (scanning"
-                                                   : " (refreshing";
-            for (int i = 0; i < dots; ++i) heading += '.';
-            heading += ')';
-        }
-        int hw=0, hh=0;
-        SDL_Texture* hd = make_text_texture(sdl_renderer_, heading,
-            label_h, 170, 170, 180, &hw, &hh);
-        if (hd) {
-            SDL_Rect d = {col1_x, cy, hw, hh};
-            SDL_SetTextureAlphaMod(hd, text_alpha);
-            SDL_RenderCopy(sdl_renderer_, hd, nullptr, &d);
-            SDL_DestroyTexture(hd);
-        }
-        cy += label_h + 4;
+        int card_r = std::max(10, pad * 3 / 4);
+        SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_NONE);
+        SDL_SetRenderDrawColor(sdl_renderer_, 30, 33, 40, 255);
+        fill_round_rect(sdl_renderer_, left - 1, cy - 1, inner_w + 2, near_h + 2, card_r + 1);
+        SDL_SetRenderDrawColor(sdl_renderer_, 17, 19, 24, 255);
+        fill_round_rect(sdl_renderer_, left, cy, inner_w, near_h, card_r);
 
+        int hy = cy + 6 + near_head_h / 2;
+        draw_text_mid(sdl_renderer_, "NEARBY", label_h * 85 / 100, 127, 138, 156, text_alpha,
+                      left + 14, hy, 0, 700);
+        if (android_discover_running_.load()) {
+            // "Scanning" + three accent dots blinking in turn.
+            int dot_r = std::max(2, label_h / 6), step = dot_r * 3;
+            int dx = left + inner_w - 14 - step * 2;
+            uint32_t ms = SDL_GetTicks();
+            SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
+            for (int i = 0; i < 3; ++i) {
+                float ph = std::fmod(ms / 1400.0f - i * 0.15f, 1.0f);
+                if (ph < 0) ph += 1.0f;
+                uint8_t a = (uint8_t)(70 + 185 * std::max(0.0f, 1.0f - std::abs(ph - 0.4f) * 3.0f));
+                SDL_SetRenderDrawColor(sdl_renderer_, ac.lr, ac.lg, ac.lb, a);
+                fill_circle(sdl_renderer_, dx + i * step, hy, dot_r);
+            }
+            draw_text_mid(sdl_renderer_, "Scanning", label_h * 9 / 10, 127, 138, 156, text_alpha,
+                          dx - step, hy, 2);
+        }
+        int ry = cy + 6 + near_head_h;
         if (discovered_snapshot.empty()) {
-            const char* msg = "No devices found. Open Wireless debugging on the phone.";
-            int tw=0, th=0;
-            SDL_Texture* tex = make_text_texture(sdl_renderer_, msg,
-                label_h - 1, 130, 130, 140, &tw, &th);
-            if (tex) {
-                SDL_Rect d = {col1_x, cy, std::min(tw, panel_w - pad*2), th};
-                SDL_SetTextureAlphaMod(tex, text_alpha);
-                SDL_RenderCopy(sdl_renderer_, tex, nullptr, &d);
-                SDL_DestroyTexture(tex);
-            }
-            cy += label_h;
-        } else {
-            for (int i = 0; i < discover_visible; ++i) {
-                const auto& dev = discovered_snapshot[i];
-                int row_w = panel_w - pad * 2;
-                SDL_Rect rr = {col1_x, cy, row_w, discover_row_h};
-                BtnRect hit{rr.x, rr.y, rr.w, rr.h};
-                android_discover_btns_.push_back(hit);
-                // Highlight the row that matches the values currently
-                // typed in the IP / Connect port fields so the user can
-                // see "this is the device I'm about to connect to".
-                bool selected = !android_ip_.empty() && dev.ip == android_ip_ &&
-                                (android_connect_port_.empty() ||
-                                 dev.connect_port == android_connect_port_);
-                SDL_SetRenderDrawColor(sdl_renderer_,
-                    selected ? 45 : 38,
-                    selected ? 60 : 38,
-                    selected ? 90 : 44, alpha);
-                SDL_RenderFillRect(sdl_renderer_, &rr);
-                SDL_SetRenderDrawColor(sdl_renderer_,
-                    selected ? 110 : 70,
-                    selected ? 150 : 70,
-                    selected ? 220 : 80, alpha);
-                SDL_RenderDrawRect(sdl_renderer_, &rr);
-
-                // Left column: device label.
-                int label_pad = 8;
-                int max_label_w = (int)(row_w * 0.55f);
-                int tw=0, th=0;
-                SDL_Texture* lt = make_text_texture(sdl_renderer_,
-                    dev.label.empty() ? std::string("Android device") : dev.label,
-                    label_h - 1, 230, 230, 235, &tw, &th);
-                if (lt) {
-                    int draw_w = std::min(tw, max_label_w);
-                    SDL_Rect d = {rr.x + label_pad,
-                                  rr.y + (rr.h - th) / 2,
-                                  draw_w, th};
-                    SDL_SetTextureAlphaMod(lt, text_alpha);
-                    SDL_RenderCopy(sdl_renderer_, lt, nullptr, &d);
-                    SDL_DestroyTexture(lt);
-                }
-
-                // Right column: ip[:port] + pairing hint.
-                std::string detail = dev.ip;
-                if (!dev.connect_port.empty()) detail += ":" + dev.connect_port;
-                if (!dev.pair_port.empty()) detail += "  (pairing)";
-                int dw=0, dh=0;
-                SDL_Texture* dt = make_text_texture(sdl_renderer_, detail,
-                    label_h - 1, 190, 200, 220, &dw, &dh);
-                if (dt) {
-                    SDL_Rect d = {rr.x + rr.w - dw - label_pad,
-                                  rr.y + (rr.h - dh) / 2,
-                                  dw, dh};
-                    SDL_SetTextureAlphaMod(dt, text_alpha);
-                    SDL_RenderCopy(sdl_renderer_, dt, nullptr, &d);
-                    SDL_DestroyTexture(dt);
-                }
-                cy += discover_row_h + 4;
-            }
+            draw_text_mid(sdl_renderer_, "No phones yet. Turn on Wireless debugging.",
+                          label_h * 9 / 10, 127, 138, 156, text_alpha, left + 14,
+                          ry + near_body_h / 2, 0);
         }
-        cy += gap;
+        for (int i = 0; i < discover_visible; ++i) {
+            const auto& dev = discovered_snapshot[i];
+            BtnRect row{left + 6, ry, inner_w - 12, dev_row_h};
+            android_discover_btns_.push_back(row);
+            bool selected = !android_ip_.empty() && dev.ip == android_ip_ &&
+                            (android_connect_port_.empty() || dev.connect_port == android_connect_port_);
+            if (selected || hov(row)) {
+                SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
+                if (selected) SDL_SetRenderDrawColor(sdl_renderer_, ac.r, ac.g, ac.b, 34);
+                else          SDL_SetRenderDrawColor(sdl_renderer_, 255, 255, 255, 12);
+                fill_round_rect(sdl_renderer_, row.x, row.y, row.w, row.h, std::max(8, card_r - 4));
+            }
+            int it = dev_row_h * 62 / 100, imid = row.y + row.h / 2;
+            SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(sdl_renderer_, 156, 201, 232, 30);
+            fill_round_rect(sdl_renderer_, row.x + 8, imid - it / 2, it, it, it / 3);
+            draw_glyph(sdl_renderer_, lucide::Wifi, row.x + 8 + it / 2, imid, it / 2,
+                       207, 228, 244, text_alpha);
+            int tx = row.x + 8 + it + 12;
+            std::string name = dev.label.empty() ? std::string("Android phone") : dev.label;
+            std::string detail = dev.ip;
+            if (!dev.connect_port.empty()) detail += ":" + dev.connect_port;
+            if (!dev.pair_port.empty()) detail += "  - ready to pair";
+            draw_text_mid(sdl_renderer_, name, label_h, 244, 246, 248, text_alpha,
+                          tx, imid - label_h * 6 / 10, 0, 600);
+            draw_text_mid(sdl_renderer_, detail, label_h * 85 / 100, 127, 138, 156, text_alpha,
+                          tx, imid + label_h * 6 / 10, 0);
+            draw_glyph(sdl_renderer_, lucide::ChevronRight, row.x + row.w - 16, imid, label_h,
+                       127, 138, 156, text_alpha);
+            ry += dev_row_h;
+        }
+        cy += near_h + gap;
     }
 
-    draw_field(0, "IP address: *",    android_ip_,           "192.168.1.42",
-               col1_x, col_w, false);
-    draw_field(1, "Connect port:",    android_connect_port_, "e.g. 46029",
-               col2_x, col_w, true);
-    draw_field(2, "Pair port: *",     android_port_,         "42379",
-               col1_x, col_w, false);
-    draw_field(3, "Pairing code: *",  android_pin_,          "123456",
-               col2_x, col_w, true);
-
-    // Status line — word-wrapped to the panel width so long error messages
-    // remain readable instead of being squished into a single line. Lines
-    // were pre-computed above so the panel height already accounts for them.
+    // Fields: two columns (IP + connect port, pair port + pairing code).
     {
-        if (!status_lines.empty()) {
-            uint8_t cr = status_err ? 230 : 140;
-            uint8_t cg = status_err ? 110 : 200;
-            uint8_t cb = status_err ? 110 : 140;
-            int max_w = panel_w - pad * 2;
-            for (auto& ln : status_lines) {
-                int tw = 0, th = 0;
-                SDL_Texture* tex = make_text_texture(sdl_renderer_, ln, label_h,
-                                                     cr, cg, cb, &tw, &th);
-                if (tex) {
-                    int dw = std::min(tw, max_w);
-                    SDL_Rect d = {panel_x + pad, cy, dw, th};
-                    SDL_SetTextureAlphaMod(tex, text_alpha);
-                    SDL_RenderCopy(sdl_renderer_, tex, nullptr, &d);
-                    SDL_DestroyTexture(tex);
-                }
-                cy += th > 0 ? th : label_h;
+        int col_w = (inner_w - gap) / 2;
+        auto field = [&](int idx, const char* label, bool required, const std::string& val,
+                         const char* placeholder, int fx, int fy) {
+            int lw = 0, lh = 0;
+            measure_text_c(sdl_renderer_, label, label_h, &lw, &lh, 600);
+            draw_text_mid(sdl_renderer_, label, label_h, 154, 167, 186, text_alpha,
+                          fx + 2, fy + label_h / 2, 0, 600);
+            if (required) {
+                SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
+                SDL_SetRenderDrawColor(sdl_renderer_, ac.lr, ac.lg, ac.lb, 255);
+                fill_circle(sdl_renderer_, fx + 2 + lw + 4, fy + label_h / 2, std::max(2, label_h / 6));
             }
-            cy += gap;
-        } else {
-            cy += label_h + gap;
-        }
+            BtnRect fr{fx, fy + label_h + 7, col_w, field_h};
+            android_field_rects_[idx] = fr;
+            ui_field_(fr, val, placeholder, android_focus_ == idx, text_alpha);
+        };
+        field(0, "IP address",   true,  android_ip_,           "192.168.1.20", left,             cy);
+        field(1, "Connect port", false, android_connect_port_, "46029",        left + col_w + gap, cy);
+        cy += field_block + gap;
+        field(2, "Pair port",    true,  android_port_,         "42379",        left,             cy);
+        field(3, "Pairing code", true,  android_pin_,          "123456",       left + col_w + gap, cy);
+        cy += field_block + gap;
     }
 
-    // Buttons
-    int bw = (panel_w - pad*2 - gap) / 2;
-    android_qr_btn_         = {panel_x + pad, cy, bw, btn_h};
-    android_usb_btn_        = {panel_x + pad + bw + gap, cy, bw, btn_h};
-    cy += btn_h + gap;
-    android_connect_btn_    = {panel_x + pad,           cy, bw, btn_h};
-    android_disconnect_btn_ = {panel_x + pad + bw + gap, cy, bw, btn_h};
-
-    auto draw_btn = [&](const BtnRect& r, const char* label, bool primary) {
-        SDL_SetRenderDrawColor(sdl_renderer_,
-            primary ? 60 : 50, primary ? 110 : 50, primary ? 200 : 55, alpha);
-        SDL_Rect br = {r.x, r.y, r.w, r.h};
-        SDL_RenderFillRect(sdl_renderer_, &br);
-        SDL_SetRenderDrawColor(sdl_renderer_,
-            primary ? 110 : 90, primary ? 150 : 90, primary ? 230 : 100, alpha);
-        SDL_RenderDrawRect(sdl_renderer_, &br);
-        int tw=0, th=0;
-        SDL_Texture* tex = make_text_texture(sdl_renderer_, label, btn_h - 12,
-            240, 240, 245, &tw, &th);
-        if (tex) {
-            SDL_Rect d = {r.x + (r.w-tw)/2, r.y + (r.h-th)/2, tw, th};
-            SDL_SetTextureAlphaMod(tex, text_alpha);
-            SDL_RenderCopy(sdl_renderer_, tex, nullptr, &d);
-            SDL_DestroyTexture(tex);
+    // Status (errors in red).
+    if (!status_lines.empty()) {
+        cy += gap / 2;
+        for (auto& ln : status_lines) {
+            if (status_err) draw_text_mid(sdl_renderer_, ln, label_h, 255, 138, 143, text_alpha,
+                                          left + 2, cy + label_h / 2, 0);
+            else            draw_text_mid(sdl_renderer_, ln, label_h, 154, 167, 186, text_alpha,
+                                          left + 2, cy + label_h / 2, 0);
+            cy += label_h + 4;
         }
-    };
-    draw_btn(android_qr_btn_,         "QR code", false);
-    draw_btn(android_usb_btn_,        "USB cable", false);
-    draw_btn(android_connect_btn_,    android_busy_ ? "Working..." : "Connect", true);
-    draw_btn(android_disconnect_btn_, "Disconnect", false);
+        cy += gap / 2;
+    }
+
+    // Buttons: QR / USB, Connect, Disconnect.
+    {
+        int bw = (inner_w - gap) / 2;
+        android_qr_btn_  = {left, cy, bw, btn_h};
+        android_usb_btn_ = {left + bw + gap, cy, bw, btn_h};
+        ui_pill_(android_qr_btn_, "QR code", lucide::QrCode, false, hov(android_qr_btn_), text_alpha);
+        ui_pill_(android_usb_btn_, "USB cable", lucide::Usb, false, hov(android_usb_btn_), text_alpha);
+        cy += btn_h + gap;
+        android_connect_btn_ = {left, cy, inner_w, btn_h + 4};
+        ui_pill_(android_connect_btn_, android_busy_ ? "Connecting..." : "Connect", 0, true,
+                 hov(android_connect_btn_), text_alpha);
+        cy += btn_h + 4;
+        int dw = 0, dh = 0;
+        measure_text_c(sdl_renderer_, "Disconnect", label_h, &dw, &dh, 600);
+        android_disconnect_btn_ = {panel_x + (panel_w - dw) / 2 - 10, cy, dw + 20, disc_h};
+        bool dh_ = hov(android_disconnect_btn_);
+        draw_text_mid(sdl_renderer_, "Disconnect", label_h, dh_ ? 255 : 138, dh_ ? 138 : 148,
+                      dh_ ? 143 : 166, text_alpha, panel_x + panel_w / 2, cy + disc_h / 2, 1, 600);
+    }
 }
 
 void Renderer::draw_android_help() {

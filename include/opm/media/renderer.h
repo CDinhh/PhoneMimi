@@ -466,6 +466,10 @@ private:
     void ui_toggle_(int x, int y, int h, bool on, const std::string& key);
     void ui_segment_(int x, int y, int w, int h, const char* const* opts, int n, int selected,
                      const std::string& key, BtnRect* out, int font_px, uint8_t alpha);
+    void ui_field_(const BtnRect& r, const std::string& val, const char* placeholder,
+                   bool focused, uint8_t alpha);
+    void ui_pill_(const BtnRect& r, const char* label, wchar_t icon, bool primary,
+                  bool hover, uint8_t alpha);
     BtnRect settings_close_btn_;
     BtnRect settings_toggle_usb_btn_;
     BtnRect settings_toggle_softkbd_btn_;
