@@ -807,6 +807,16 @@ bool MiracastReceiver::start(const Config& config) {
 
     worker_thread_ = std::thread([this, config, &init_promise]() {
         impl_->worker_thread_id = GetCurrentThreadId();
+        // init_promise lives on start()'s stack and is gone once start()
+        // returns, so it may be set exactly once. An error thrown later
+        // (from the message loop) must not touch it: doing so left this
+        // thread stuck and the process never exited.
+        bool init_reported = false;
+        auto report_init = [&](bool ok) {
+            if (init_reported) return;
+            init_reported = true;
+            init_promise.set_value(ok);
+        };
 
         try {
             winrt::init_apartment(winrt::apartment_type::single_threaded);
@@ -915,7 +925,7 @@ bool MiracastReceiver::start(const Config& config) {
                 std::ref(on_video_), std::ref(on_audio_),
                 std::ref(on_disconnect_), std::ref(running_));
 
-            init_promise.set_value(true);
+            report_init(true);
 
             // STA message loop for WiFi Direct events
             MSG msg;
@@ -941,13 +951,13 @@ bool MiracastReceiver::start(const Config& config) {
                           << "check that your WiFi adapter supports P2P\n";
             }
 
-            try { init_promise.set_value(false); } catch (...) {}
+            report_init(false);
         } catch (const std::exception& ex) {
             std::cerr << "[Miracast] Error: " << ex.what() << "\n";
-            try { init_promise.set_value(false); } catch (...) {}
+            report_init(false);
         } catch (...) {
             std::cerr << "[Miracast] Unknown error\n";
-            try { init_promise.set_value(false); } catch (...) {}
+            report_init(false);
         }
     });
 
