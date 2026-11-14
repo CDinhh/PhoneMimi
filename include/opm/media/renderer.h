@@ -255,7 +255,8 @@ private:
 
     // Physical buttons sticking out of the frame:
     // 0 action/mute, 1 volume up, 2 volume down (left side), 3 power (right).
-    BtnRect side_btn_[4];            // the protruding part, window coords
+    BtnRect side_btn_[4];            // drawn rect (window coords): sticks out + tucks under the body
+    bool side_btn_far_[4] = {};      // on the right (portrait) / bottom (landscape) edge
     BtnRect side_btn_hit_[4];        // click target (reaches into the bezel)
     void layout_side_buttons_();
     void draw_side_buttons_(std::string& hover_key, std::string& hover_text,

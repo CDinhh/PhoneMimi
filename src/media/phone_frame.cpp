@@ -146,35 +146,41 @@ bool PhoneFrame::generate(SDL_Renderer* renderer, int screen_w, int screen_h) {
     //      * Power: ~28% of screen height, starts ~30% from the top.
     //      * Action: small button above the volume rockers (~3% tall).
     //      * Volume up/down: each ~7% tall, slightly below action.
-    has_side_buttons_ = !is_tablet && is_portrait;
+    has_side_buttons_ = !is_tablet;
+    side_buttons_horizontal_ = !is_portrait;
     if (has_side_buttons_) {
-        int btn_w = std::max(3, bezel_side_ / 4);
+        // Everything is laid out along the phone's long side, starting at
+        // its top, then mapped to an edge depending on orientation.
+        const int long_side  = is_portrait ? screen_h_ : screen_w_;
+        const int long_start = is_portrait ? bezel_top_ : bezel_side_;
+        const int btn_w = std::max(3, (is_portrait ? bezel_side_ : bezel_top_) / 4);
 
-        // Action button (left side, above volume) — small.
-        int act_h    = std::max(8, static_cast<int>(screen_h_ * 0.030f));
-        int act_y    = bezel_top_ + static_cast<int>(screen_h_ * 0.17f);
-        draw_rect(frame_pixels_, frame_w_, frame_h_,
-                  0, act_y, btn_w, act_h, BUTTON_COLOR);
-
-        // Volume up (left side) — 50% longer, moved further down.
-        int vol_h    = std::max(21, static_cast<int>(screen_h_ * 0.0675f));
+        // Action button, above the volume rockers - small.
+        int act_h    = std::max(8, static_cast<int>(long_side * 0.030f));
+        int act_y    = long_start + static_cast<int>(long_side * 0.17f);
+        // Volume up / down.
+        int vol_h    = std::max(21, static_cast<int>(long_side * 0.0675f));
         int vol_up_y = act_y + act_h + std::max(6, vol_h / 3);
-        draw_rect(frame_pixels_, frame_w_, frame_h_,
-                  0, vol_up_y, btn_w, vol_h, BUTTON_COLOR);
-
-        // Volume down (left side, below up).
         int vol_dn_y = vol_up_y + vol_h + std::max(4, vol_h / 3);
-        draw_rect(frame_pixels_, frame_w_, frame_h_,
-                  0, vol_dn_y, btn_w, vol_h, BUTTON_COLOR);
-
-        // Power button (right side) — 50% longer; bottom aligned with
-        // the bottom of the lower volume button to match real iPhone
-        // proportions where the power and volume-down ends sit at the
-        // same height on the chassis.
-        int pwr_h = std::max(30, static_cast<int>(screen_h_ * 0.0975f));
+        // Power, on the opposite side; its far end lines up with the far
+        // end of volume-down, as on a real iPhone.
+        int pwr_h = std::max(30, static_cast<int>(long_side * 0.0975f));
         int pwr_y = (vol_dn_y + vol_h) - pwr_h;
-        draw_rect(frame_pixels_, frame_w_, frame_h_,
-                  frame_w_ - btn_w, pwr_y, btn_w, pwr_h, BUTTON_COLOR);
+
+        // `volume_side` is the left edge in portrait, the bottom edge in
+        // landscape; power sits on the other one.
+        auto mark = [&](int along, int len, bool volume_side) {
+            if (is_portrait)
+                draw_rect(frame_pixels_, frame_w_, frame_h_,
+                          volume_side ? 0 : frame_w_ - btn_w, along, btn_w, len, BUTTON_COLOR);
+            else
+                draw_rect(frame_pixels_, frame_w_, frame_h_,
+                          along, volume_side ? frame_h_ - btn_w : 0, len, btn_w, BUTTON_COLOR);
+        };
+        mark(act_y, act_h, true);
+        mark(vol_up_y, vol_h, true);
+        mark(vol_dn_y, vol_h, true);
+        mark(pwr_y, pwr_h, false);
 
         side_action_ = {act_y, act_h};
         side_vol_up_ = {vol_up_y, vol_h};

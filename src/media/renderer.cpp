@@ -2658,7 +2658,7 @@ void Renderer::run() {
                         margin = std::max(4, new_phone_h / 40);
                         needed_w = new_phone_w + std::max(0, drawer_w - margin);
                     }
-                    if (phone_frame_.has_side_buttons())
+                    if (phone_frame_.has_side_buttons() && !phone_frame_.side_buttons_horizontal())
                         needed_w += side_btn_margin(new_phone_w) * 2;
                     SDL_SetWindowSize(window_, needed_w, new_phone_h);
                     if (resize_from_tl_) {
@@ -2999,6 +2999,10 @@ void Renderer::render_frame() {
     // height 1992) would otherwise be drawn at 1:1 inside a ~700 px window
     // and the bottom bezel would be clipped.
     int phone_region_h = std::max(1, win_h - webcam_drawer_h_applied_);
+    // Landscape phones have their buttons on the top and bottom edges:
+    // shrink the phone a little so they fit inside the window.
+    if (phone_frame_.has_side_buttons() && phone_frame_.side_buttons_horizontal())
+        phone_region_h = std::max(1, phone_region_h - side_btn_margin(phone_region_h) * 2);
     scale          = (float)phone_region_h / fh;
     frame_dst_w_   = (int)(fw * scale);
     frame_dst_h_   = (int)(fh * scale);
@@ -3027,7 +3031,8 @@ void Renderer::render_frame() {
     bool is_fullscreen =
         (SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0;
     // Strip on each side of the phone for the buttons that stick out.
-    int side_m = phone_frame_.has_side_buttons() ? side_btn_margin(frame_dst_w_) : 0;
+    int side_m = (phone_frame_.has_side_buttons() && !phone_frame_.side_buttons_horizontal())
+                     ? side_btn_margin(frame_dst_w_) : 0;
     int needed_w = frame_dst_w_ + log_panel_w + side_m * 2;
     int webcam_h_delta = webcam_drawer_h - webcam_drawer_h_applied_;
     int needed_h = win_h + webcam_h_delta;
@@ -6795,24 +6800,50 @@ void Renderer::layout_side_buttons_() {
     for (int i = 0; i < 4; ++i) side_btn_[i] = side_btn_hit_[i] = {};
     if (!phone_frame_.has_side_buttons() || frame_dst_w_ <= 0) return;
 
+    const bool horizontal = phone_frame_.side_buttons_horizontal();
     float scale = (float)frame_dst_w_ / phone_frame_.frame_width();
-    int m = side_btn_margin(frame_dst_w_);
-    // The click target reaches into the bezel: the visible part is only a
-    // few pixels wide.
-    int grab = std::max(4, (int)(phone_frame_.bezel_left() * scale));
-    auto place = [&](int i, PhoneFrame::SideButton sb, bool right) {
-        int y = frame_dst_y_ + (int)std::round(sb.y * scale);
-        int h = std::max(6, (int)std::round(sb.h * scale));
-        int x = right ? frame_dst_x_ + frame_dst_w_ : frame_dst_x_ - m;
-        side_btn_[i]     = {x, y, m, h};
-        side_btn_hit_[i] = {right ? x - grab : x, y, m + grab, h};
+    // m: how far a button sticks out. tuck: how far it reaches under the
+    // chassis, so only its outer corners look rounded.
+    int m = side_btn_margin(horizontal ? frame_dst_h_ : frame_dst_w_);
+    int tuck = std::max(2, m / 2);
+    // In portrait the click target reaches into the (empty) side bezel,
+    // because the visible part is only a few pixels thick. Not in landscape:
+    // the top and bottom bezels hold the menu button and the source dots.
+    int grab = horizontal ? 0 : std::max(4, (int)(phone_frame_.bezel_left() * scale));
+    // far_edge: right edge in portrait, bottom edge in landscape.
+    auto place = [&](int i, PhoneFrame::SideButton sb, bool far_edge) {
+        int along = (int)std::round(sb.y * scale);
+        int len   = std::max(6, (int)std::round(sb.h * scale));
+        if (horizontal) {
+            int x = frame_dst_x_ + along;
+            int y = far_edge ? frame_dst_y_ + frame_dst_h_ - tuck : frame_dst_y_ - m;
+            side_btn_[i]     = {x, y, len, m + tuck};
+            side_btn_hit_[i] = {x, far_edge ? y - grab : y, len, m + tuck + grab};
+        } else {
+            int y = frame_dst_y_ + along;
+            int x = far_edge ? frame_dst_x_ + frame_dst_w_ - tuck : frame_dst_x_ - m;
+            side_btn_[i]     = {x, y, m + tuck, len};
+            side_btn_hit_[i] = {far_edge ? x - grab : x, y, m + tuck + grab, len};
+        }
+        side_btn_far_[i] = far_edge;
     };
-    place(0, phone_frame_.side_action(), false);
-    place(1, phone_frame_.side_volume_up(), false);
-    place(2, phone_frame_.side_volume_down(), false);
-    // The log drawer opens flush against the right edge, where the power
-    // button is.
-    if (log_panel_anim_ <= 0.01f) place(3, phone_frame_.side_power(), true);
+    if (horizontal) {
+        // Phone turned with its top to the left: volume along the bottom
+        // edge, power along the top. The webcam drawer hangs off the bottom.
+        if (webcam_drawer_anim_ <= 0.01f) {
+            place(0, phone_frame_.side_action(), true);
+            place(1, phone_frame_.side_volume_up(), true);
+            place(2, phone_frame_.side_volume_down(), true);
+        }
+        place(3, phone_frame_.side_power(), false);
+    } else {
+        place(0, phone_frame_.side_action(), false);
+        place(1, phone_frame_.side_volume_up(), false);
+        place(2, phone_frame_.side_volume_down(), false);
+        // The log drawer opens flush against the right edge, where the
+        // power button is.
+        if (log_panel_anim_ <= 0.01f) place(3, phone_frame_.side_power(), true);
+    }
 }
 
 void Renderer::draw_side_buttons_(std::string& hover_key, std::string& hover_text,
@@ -6820,6 +6851,7 @@ void Renderer::draw_side_buttons_(std::string& hover_key, std::string& hover_tex
     uint8_t br, bg, bb;
     phone_frame_.button_color(&br, &bg, &bb);
     const bool android = android_input_active_();
+    const bool horizontal = phone_frame_.side_buttons_horizontal();
     static const char* const android_tips[4] = {"Mute", "Volume up", "Volume down", "Power"};
     static const char* const other_tips[4] = {
         "Mute PC audio", "Volume: use the phone", "Volume: use the phone", "Power: use the phone"};
@@ -6830,29 +6862,36 @@ void Renderer::draw_side_buttons_(std::string& hover_key, std::string& hover_tex
         const BtnRect& b = side_btn_[i];
         if (b.w <= 0) continue;
         const BtnRect& hit = side_btn_hit_[i];
-        const bool right = (i == 3);
+        const bool far_edge = side_btn_far_[i];
         const bool hover = in_rect(mx, my, hit.x, hit.y, hit.w, hit.h);
         auto shade = [&](uint8_t c, int d) { return (uint8_t)std::min(255, std::max(0, c + d)); };
         const int lift = hover ? 45 : 0;
+        const int thick = horizontal ? b.h : b.w;
+        const int rad = std::max(1, thick / 3);
 
-        // Body: tucked a little under the chassis so only the outer corners
-        // look rounded.
-        const int tuck = std::max(2, b.w / 2);
         SDL_SetRenderDrawColor(sdl_renderer_, shade(br, lift), shade(bg, lift), shade(bb, lift), 255);
-        fill_round_rect(sdl_renderer_, right ? b.x - tuck : b.x, b.y, b.w + tuck, b.h,
-                        std::max(1, b.w / 2));
+        fill_round_rect(sdl_renderer_, b.x, b.y, b.w, b.h, rad);
         // Thin highlight on the outer face for a machined-metal look.
-        const int rad = std::max(1, b.w / 2);
-        const int edge_x = right ? b.x + b.w - 1 : b.x;
         SDL_SetRenderDrawColor(sdl_renderer_, shade(br, lift + 30), shade(bg, lift + 30),
                                shade(bb, lift + 32), 255);
-        SDL_RenderDrawLine(sdl_renderer_, edge_x, b.y + rad, edge_x, b.y + b.h - 1 - rad);
+        if (horizontal) {
+            int edge_y = far_edge ? b.y + b.h - 1 : b.y;
+            SDL_RenderDrawLine(sdl_renderer_, b.x + rad, edge_y, b.x + b.w - 1 - rad, edge_y);
+        } else {
+            int edge_x = far_edge ? b.x + b.w - 1 : b.x;
+            SDL_RenderDrawLine(sdl_renderer_, edge_x, b.y + rad, edge_x, b.y + b.h - 1 - rad);
+        }
 
         if (hover) {
             hover_key  = std::string("side") + (char)('0' + i);
             hover_text = android ? android_tips[i] : other_tips[i];
-            hover_ax   = right ? hit.x : hit.x + hit.w;
-            hover_ay   = b.y + b.h / 2;
+            if (horizontal) {
+                hover_ax = b.x + b.w / 2;
+                hover_ay = far_edge ? hit.y : hit.y + hit.h;
+            } else {
+                hover_ax = far_edge ? hit.x : hit.x + hit.w;
+                hover_ay = b.y + b.h / 2;
+            }
         }
     }
 }
@@ -9582,13 +9621,12 @@ void Renderer::update_window_shape() {
         frame_dst_y_ + frame_dst_h_ + 1,
         cr * 2, cr * 2);
 
-    // Side buttons stick out of the phone outline. Each region reaches the
-    // same distance into the body so only its outer corners end up rounded.
+    // Side buttons stick out of the phone outline (their rects reach a
+    // little under the body, so only the outer corners end up rounded).
     for (const BtnRect& b : side_btn_) {
         if (b.w <= 0) continue;
-        HRGN btn_rgn = CreateRoundRectRgn(b.x - (b.x < frame_dst_x_ ? 0 : b.w), b.y,
-                                          b.x + (b.x < frame_dst_x_ ? b.w * 2 : b.w) + 1,
-                                          b.y + b.h + 1, b.w, b.w);
+        int ell = std::max(2, std::min(b.w, b.h) * 2 / 3);
+        HRGN btn_rgn = CreateRoundRectRgn(b.x, b.y, b.x + b.w + 1, b.y + b.h + 1, ell, ell);
         if (btn_rgn) {
             CombineRgn(phone_rgn, phone_rgn, btn_rgn, RGN_OR);
             DeleteObject(btn_rgn);
