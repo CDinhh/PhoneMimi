@@ -41,6 +41,8 @@ extern "C" {
                                int stride_in_bytes);
     unsigned char* stbi_load(const char* filename, int* x, int* y,
                              int* channels_in_file, int desired_channels);
+    unsigned char* stbi_load_from_memory(const unsigned char* buffer, int len, int* x, int* y,
+                                         int* channels_in_file, int desired_channels);
     void stbi_image_free(void* retval_from_stbi_load);
 }
 
@@ -1039,6 +1041,24 @@ bool Renderer::init(const std::string& title, int /*width*/, int /*height*/) {
             android_icon_sz_ = 128;
         }
     }
+    {
+        const void* png = nullptr; DWORD png_size = 0;
+        int lw = 0, lh = 0, lc = 0;
+        unsigned char* logo = load_rcdata(210, &png, &png_size)
+            ? stbi_load_from_memory(static_cast<const unsigned char*>(png), (int)png_size, &lw, &lh, &lc, 4)
+            : nullptr;
+        if (logo) {
+            SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "best");
+            logo_tex_ = SDL_CreateTexture(sdl_renderer_, SDL_PIXELFORMAT_RGBA32,
+                                          SDL_TEXTUREACCESS_STATIC, lw, lh);
+            if (logo_tex_) {
+                SDL_SetTextureBlendMode(logo_tex_, SDL_BLENDMODE_BLEND);
+                SDL_UpdateTexture(logo_tex_, nullptr, logo, lw * 4);
+                logo_w_ = lw; logo_h_ = lh;
+            }
+            stbi_image_free(logo);
+        }
+    }
 #endif
 
     // Footer segments for waiting screen
@@ -1298,6 +1318,7 @@ void Renderer::shutdown() {
     if (android_instr_tex_) { SDL_DestroyTexture(android_instr_tex_); android_instr_tex_ = nullptr; }
     if (ios_icon_tex_) { SDL_DestroyTexture(ios_icon_tex_); ios_icon_tex_ = nullptr; }
     if (android_icon_tex_) { SDL_DestroyTexture(android_icon_tex_); android_icon_tex_ = nullptr; }
+    if (logo_tex_) { SDL_DestroyTexture(logo_tex_); logo_tex_ = nullptr; }
     for (auto& l : info_lines_) { if (l.tex) SDL_DestroyTexture(l.tex); }
     info_lines_.clear();
     for (auto& l : version_lines_) { if (l.tex) SDL_DestroyTexture(l.tex); }
@@ -3300,94 +3321,139 @@ void Renderer::render_frame() {
             }
         }
     } else {
-        // --- Waiting screen ---
+        // --- Waiting screen: "polar night" around the penguin ---
         SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
-        SDL_SetRenderDrawColor(sdl_renderer_, 7, 9, 18, 255);
+        SDL_SetRenderDrawColor(sdl_renderer_, 9, 11, 16, 255);
         SDL_RenderClear(sdl_renderer_);
-        {
-            // Soft vertical gradient behind the whole screen area.
-            SDL_Color top = {18, 26, 50, 255}, bot = {7, 9, 18, 255};
-            float x0 = (float)svx, x1 = (float)(svx + svw);
-            float y0 = (float)svy, y1 = (float)(svy + svh);
-            SDL_Vertex v[4] = {
-                {{x0, y0}, top, {0, 0}}, {{x1, y0}, top, {0, 0}},
-                {{x0, y1}, bot, {0, 0}}, {{x1, y1}, bot, {0, 0}},
-            };
-            int idx[6] = {0, 1, 2, 2, 1, 3};
-            SDL_RenderGeometry(sdl_renderer_, nullptr, v, 4, idx, 6);
-        }
 #ifdef _WIN32
         {
             const int u = std::min(svw, (int)(svh * 0.62f));   // layout unit
             const int mcx = svx + svw / 2;
-            const int mark_r = std::max(16, (int)(u * 0.12f));
-            const int mcy = svy + (int)(svh * 0.17f);
+            const int mcy = svy + (int)(svh * 0.30f);
+            const uint32_t ms = SDL_GetTicks();
+            const Accent& ac = accent_for(settings_.accent_color);
+            SDL_Rect screen_clip = {svx, svy, svw, svh};
+            SDL_RenderSetClipRect(sdl_renderer_, &screen_clip);
 
-            // Phone mark with two slow pulse rings ("listening").
-            float ph = (SDL_GetTicks() % 2400) / 2400.0f;
-            for (int k = 0; k < 2; ++k) {
-                float p = std::fmod(ph + k * 0.5f, 1.0f);
-                int rr = mark_r + (int)(p * mark_r * 0.9f);
-                SDL_SetRenderDrawColor(sdl_renderer_, 59, 130, 246, (uint8_t)((1.0f - p) * 46));
-                fill_circle(sdl_renderer_, mcx, mcy, rr);
+            // Radial glow behind the penguin (triangle fan).
+            {
+                const int seg = 48;
+                float rad = svh * 0.75f;
+                SDL_Color mid = {28, 38, 54, 255}, edge = {9, 11, 16, 255};
+                std::vector<SDL_Vertex> v;
+                std::vector<int> idx;
+                v.push_back({{(float)mcx, (float)mcy}, mid, {0, 0}});
+                for (int i = 0; i <= seg; ++i) {
+                    float a = i * 6.2831853f / seg;
+                    v.push_back({{mcx + std::cos(a) * rad, mcy + std::sin(a) * rad * 0.8f}, edge, {0, 0}});
+                }
+                for (int i = 1; i <= seg; ++i) { idx.push_back(0); idx.push_back(i); idx.push_back(i + 1); }
+                SDL_RenderGeometry(sdl_renderer_, nullptr, v.data(), (int)v.size(), idx.data(), (int)idx.size());
             }
-            SDL_SetRenderDrawColor(sdl_renderer_, 37, 99, 235, 255);
-            fill_circle(sdl_renderer_, mcx, mcy, mark_r);
-            draw_glyph(sdl_renderer_, lucide::Smartphone, mcx, mcy, (int)(mark_r * 1.1f), 255, 255, 255, 255);
 
-            int ty = mcy + (int)(mark_r * 1.95f);
-            int th = draw_text_c(sdl_renderer_, "PhoneMimi", (int)(u * 0.085f),
-                                 240, 243, 250, 255, mcx, ty, 1);
-            draw_text_c(sdl_renderer_, "Waiting for a phone to connect...", fit_text_px(
-                            sdl_renderer_, "Waiting for a phone to connect...", (int)(u * 0.045f),
-                            (int)(svw * 0.9f)),
-                        130, 144, 176, 255, mcx, ty + th + (int)(u * 0.01f), 1);
+            // A few snow dots drifting down.
+            static const float flakes[8][3] = {   // x (0..1), phase (0..1), size
+                {0.12f, 0.10f, 1.4f}, {0.78f, 0.55f, 1.0f}, {0.64f, 0.30f, 1.2f}, {0.22f, 0.80f, 1.0f},
+                {0.88f, 0.20f, 1.4f}, {0.40f, 0.65f, 1.0f}, {0.55f, 0.92f, 1.2f}, {0.05f, 0.45f, 1.0f},
+            };
+            for (auto& f : flakes) {
+                float y = std::fmod(f[1] + ms / 26000.0f, 1.0f);
+                int fx = svx + (int)(f[0] * svw + std::sin(ms / 2400.0f + f[1] * 6.0f) * 6.0f);
+                int fy = svy + (int)(y * svh);
+                SDL_SetRenderDrawColor(sdl_renderer_, 255, 255, 255, (uint8_t)(110 * (1.0f - y * 0.6f)));
+                fill_circle(sdl_renderer_, fx, fy, std::max(1, (int)std::lround(f[2] * u / 390.0f)));
+            }
 
-            // Two "how to connect" cards.
+            // Two ice-blue rings expanding behind the badge ("listening").
+            const int R = std::max(40, (int)(u * 0.20f));
+            for (int k = 0; k < 2; ++k) {
+                float p = std::fmod(ms / 2800.0f + k * 0.5f, 1.0f);
+                float rr = R * (0.95f + p * 0.45f);
+                SDL_SetRenderDrawColor(sdl_renderer_, 156, 201, 232, (uint8_t)((1.0f - p) * 120));
+                for (int i = 0; i < 360; ++i) {
+                    float a = i * 0.0174533f;
+                    SDL_RenderDrawPointF(sdl_renderer_, mcx + std::cos(a) * rr, mcy + std::sin(a) * rr);
+                    SDL_RenderDrawPointF(sdl_renderer_, mcx + std::cos(a) * (rr + 0.8f),
+                                         mcy + std::sin(a) * (rr + 0.8f));
+                }
+            }
+
+            // Badge: glass shell, white-ice core, penguin bobbing inside.
+            SDL_SetRenderDrawColor(sdl_renderer_, 255, 255, 255, 22);
+            fill_circle(sdl_renderer_, mcx, mcy, R + 1);
+            SDL_SetRenderDrawColor(sdl_renderer_, 255, 255, 255, 14);
+            fill_circle(sdl_renderer_, mcx, mcy, R);
+            const int core = R - std::max(5, R / 13);
+            SDL_SetRenderDrawColor(sdl_renderer_, 214, 226, 238, 255);
+            fill_circle(sdl_renderer_, mcx, mcy, core);
+            SDL_SetRenderDrawColor(sdl_renderer_, 236, 242, 248, 255);
+            fill_circle(sdl_renderer_, mcx, mcy - core / 14, core - core / 10);
+            SDL_SetRenderDrawColor(sdl_renderer_, 252, 253, 255, 255);
+            fill_circle(sdl_renderer_, mcx, mcy - core / 6, core * 6 / 10);
+            if (logo_tex_ && logo_w_ > 0) {
+                float bob = std::sin(ms / 3200.0f * 6.2831853f);
+                int lw = core * 137 / 100, lh = lw * logo_h_ / logo_w_;
+                SDL_Rect d = {mcx - lw / 2, mcy - lh / 2 - (int)(bob * u / 48.0f), lw, lh};
+                SDL_RenderCopyEx(sdl_renderer_, logo_tex_, nullptr, &d, bob * 2.0, nullptr, SDL_FLIP_NONE);
+            }
+
+            // Wordmark + "Waiting for a phone" with three accent dots.
+            int ty = mcy + R + (int)(u * 0.06f);
+            int th = draw_text_c(sdl_renderer_, "PhoneMimi", (int)(u * 0.087f),
+                                 244, 246, 248, 255, mcx, ty, 1, 800);
+            int sub_px = (int)(u * 0.040f);
+            int sw = 0, sh = 0;
+            measure_text_c(sdl_renderer_, "Waiting for a phone", sub_px, &sw, &sh);
+            int dot_r = std::max(2, sub_px / 7), dots_w = dot_r * 2 * 3 + dot_r * 2 * 2;
+            int sx = mcx - (sw + dot_r * 3 + dots_w) / 2;
+            int sy = ty + th + (int)(u * 0.012f);
+            draw_text_c(sdl_renderer_, "Waiting for a phone", sub_px, 154, 167, 186, 255, sx, sy, 0);
+            for (int i = 0; i < 3; ++i) {
+                float ph = std::fmod(ms / 1400.0f - i * 0.14f, 1.0f);
+                if (ph < 0) ph += 1.0f;
+                uint8_t a = (uint8_t)(64 + 191 * std::max(0.0f, 1.0f - std::abs(ph - 0.4f) * 3.0f));
+                SDL_SetRenderDrawColor(sdl_renderer_, ac.lr, ac.lg, ac.lb, a);
+                fill_circle(sdl_renderer_, sx + sw + dot_r * 3 + dot_r + i * dot_r * 4, sy + sh / 2 + 1, dot_r);
+            }
+
+            // Two double-bezel cards: how to connect.
             const int card_w = (int)(svw * 0.88f);
             const int card_x = svx + (svw - card_w) / 2;
-            const int card_h = (int)(u * 0.30f);
-            const int card_pad = (int)(u * 0.045f);
-            const int card_rad = (int)(u * 0.04f);
-            int card_y = svy + (int)(svh * 0.46f);
+            const int card_h = (int)(u * 0.20f);
+            const int rad = card_h / 3;
+            int card_y = svy + (int)(svh * 0.58f);
+            auto draw_card = [&](wchar_t icon, bool accent_tile, const char* title, const char* line) {
+                SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_NONE);
+                SDL_SetRenderDrawColor(sdl_renderer_, 32, 38, 50, 255);
+                fill_round_rect(sdl_renderer_, card_x, card_y, card_w, card_h, rad);
+                SDL_SetRenderDrawColor(sdl_renderer_, 17, 21, 29, 255);
+                fill_round_rect(sdl_renderer_, card_x + 1, card_y + 1, card_w - 2, card_h - 2, rad - 1);
+                int in = std::max(4, card_h / 16);
+                SDL_SetRenderDrawColor(sdl_renderer_, 23, 28, 38, 255);
+                fill_round_rect(sdl_renderer_, card_x + in, card_y + in, card_w - in * 2, card_h - in * 2, rad - in);
+                SDL_SetRenderDrawColor(sdl_renderer_, 40, 47, 60, 255);
+                SDL_RenderDrawLine(sdl_renderer_, card_x + rad, card_y + in, card_x + card_w - rad, card_y + in);
+                SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
 
-            auto draw_card = [&](SDL_Texture* icon, const std::string& title,
-                                 const std::string& l1, const std::string& l2) {
-                SDL_SetRenderDrawColor(sdl_renderer_, 40, 52, 86, 255);
-                fill_round_rect(sdl_renderer_, card_x, card_y, card_w, card_h, card_rad);
-                SDL_SetRenderDrawColor(sdl_renderer_, 22, 30, 54, 255);
-                fill_round_rect(sdl_renderer_, card_x + 1, card_y + 1, card_w - 2,
-                                card_h - 2, card_rad - 1);
+                int tile = card_h * 52 / 100, tmid = card_y + card_h / 2;
+                int tx = card_x + in + card_h / 4;
+                if (accent_tile) SDL_SetRenderDrawColor(sdl_renderer_, ac.r, ac.g, ac.b, 40);
+                else             SDL_SetRenderDrawColor(sdl_renderer_, 156, 201, 232, 30);
+                fill_round_rect(sdl_renderer_, tx, tmid - tile / 2, tile, tile, tile / 3);
+                if (accent_tile) draw_glyph(sdl_renderer_, icon, tx + tile / 2, tmid, tile / 2, ac.lr, ac.lg, ac.lb, 255);
+                else             draw_glyph(sdl_renderer_, icon, tx + tile / 2, tmid, tile / 2, 207, 228, 244, 255);
 
-                int tile_r = (int)(card_h * 0.30f);
-                int tcx = card_x + card_pad + tile_r;
-                int tcy = card_y + card_h / 2;
-                SDL_SetRenderDrawColor(sdl_renderer_, 34, 46, 80, 255);
-                fill_circle(sdl_renderer_, tcx, tcy, tile_r);
-                if (icon) {
-                    int isz = (int)(tile_r * 1.15f);
-                    SDL_SetTextureColorMod(icon, 205, 216, 240);
-                    SDL_Rect ir = {tcx - isz / 2, tcy - isz / 2, isz, isz};
-                    SDL_RenderCopy(sdl_renderer_, icon, nullptr, &ir);
-                    SDL_SetTextureColorMod(icon, 255, 255, 255);
-                }
-
-                int text_x = tcx + tile_r + card_pad;
-                int avail = card_x + card_w - card_pad - text_x;
-                int tpx = fit_text_px(sdl_renderer_, title, (int)(u * 0.062f), avail);
-                int p1 = fit_text_px(sdl_renderer_, l1, (int)(u * 0.040f), avail);
-                int p2 = fit_text_px(sdl_renderer_, l2, (int)(u * 0.040f), avail);
-                int block = (int)(tpx * 1.35f) + (int)(p1 * 1.35f) + (int)(p2 * 1.35f);
-                int y = card_y + (card_h - block) / 2;
-                y += draw_text_c(sdl_renderer_, title, tpx, 236, 240, 250, 255, text_x, y, 0);
-                y += draw_text_c(sdl_renderer_, l1, p1, 140, 152, 182, 255, text_x, y, 0);
-                draw_text_c(sdl_renderer_, l2, p2, 140, 152, 182, 255, text_x, y, 0);
-                card_y += card_h + (int)(u * 0.04f);
+                int text_x = tx + tile + card_h / 5;
+                int avail = card_x + card_w - in - card_h / 5 - text_x;
+                int tpx = fit_text_px(sdl_renderer_, title, (int)(u * 0.040f), avail, 700);
+                int lpx = fit_text_px(sdl_renderer_, line, (int)(u * 0.034f), avail);
+                draw_text_mid(sdl_renderer_, title, tpx, 244, 246, 248, 255, text_x, tmid - tpx * 6 / 10, 0, 700);
+                draw_text_mid(sdl_renderer_, line, lpx, 154, 167, 186, 255, text_x, tmid + lpx * 7 / 10, 0);
+                card_y += card_h + (int)(u * 0.035f);
             };
-            draw_card(android_icon_tex_, "Android",
-                      "Wi-Fi code, QR code or USB cable", "Press A to get started");
-            draw_card(ios_icon_tex_, "iPhone / iPad",
-                      "Control Center > Screen Mirroring", "then choose PhoneMimi");
+            draw_card(lucide::Smartphone, false, "iPhone", "Screen Mirroring, then pick PhoneMimi");
+            draw_card(lucide::Usb, true, "Android", "Plug in a USB cable, or press A");
+            SDL_RenderSetClipRect(sdl_renderer_, nullptr);
         }
 #endif
 

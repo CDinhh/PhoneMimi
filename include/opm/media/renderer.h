@@ -368,6 +368,8 @@ private:
     SDL_Texture* ios_icon_tex_ = nullptr;
     int ios_icon_sz_ = 0;
     SDL_Texture* android_icon_tex_ = nullptr;
+    SDL_Texture* logo_tex_ = nullptr;   // penguin, decoded from the exe (RCDATA 210)
+    int logo_w_ = 0, logo_h_ = 0;
     int android_icon_sz_ = 0;
 
     // Footer (waiting screen)
