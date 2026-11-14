@@ -38,3 +38,6 @@ crash_pin.log
 *.log
 ffmpeg-rebuild.log
 rust/target/
+
+# The portable build in app/ is committed on purpose.
+!app/**

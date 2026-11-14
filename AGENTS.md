@@ -110,7 +110,7 @@ a Release build before tagging.
   no local cert) or a local cert via `-SignCertThumbprint`.
   `-IntuneWinAppUtil <path>` wraps the MSI for Intune.
 - **Portable:** `.\package.ps1 -Portable` - same build + staging, then copies
-  the result to `app\` (git-ignored) and stops before WiX. Run this after
+  the result to `app\` (committed) and stops before WiX. Run this after
   every code change; `app\PhoneMimi.exe` is the copy the owner uses.
 - **CI:** [.github/workflows/release.yml](.github/workflows/release.yml) is a
   manual `workflow_dispatch` validation build that uploads an unsigned
