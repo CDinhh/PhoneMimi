@@ -20,24 +20,6 @@ Multiple phones can stay paired at once and appear as small dots in the
 bottom bezel; left-click switches the active source, right-click opens a
 menu to disconnect.
 
-> Like the project? [Buy me a coffee ☕](https://buymeacoffee.com/simonskothn) — every tip helps keep development going.
-
-> 📖 Read the announcement on MSEndpointMgr: [1PhoneMirror – Free screen mirroring tool for Intune admins](https://msendpointmgr.com/2026/05/18/1phonemirror-free-screen-mirroring-tool-for-intune-admin/)
-
-## Why 1PhoneMirror exists
-
-I build documentation and deliver training on managing Android and iOS
-devices through Microsoft Intune. Every walkthrough needs clean
-screenshots of the phone — ideally framed in a real device shape so
-readers immediately know what they're looking at.
-
-Finding a tool that did just that turned out to be surprisingly painful:
-the free options either didn't work reliably, locked the good features
-behind a subscription, or produced bare un-framed captures I had to
-re-edit by hand. So I wrote my own. **1PhoneMirror** is the result —
-a no-install, no-cable mirror that drops a properly-framed phone image
-straight into your screenshots and recordings, ready to paste into a
-guide, a Loop page, or a slide deck.
 ## Screenshots
 
 <table>
@@ -74,20 +56,13 @@ into MP4 (libx264) or animated GIF.
 
 ## Install
 
-The fastest way (Windows 10 / 11):
+Grab the MSI or the portable zip from
+[Releases](https://github.com/CDinhh/1PhoneMirror/releases/latest),
+or build a portable copy yourself:
 
 ```powershell
-winget install MSEndpointMgr.1PhoneMirror
+.\package.ps1 -Portable    # -> app\1PhoneMirror.exe
 ```
-
-Already installed? Upgrade to the latest release with:
-
-```powershell
-winget upgrade MSEndpointMgr.1PhoneMirror
-```
-
-Or grab the latest MSI directly from
-[Releases](https://github.com/MSEndpointMgr/1PhoneMirror/releases/latest).
 
 ## Connecting a phone
 
@@ -227,26 +202,16 @@ screenshot and the relevant lines from the in-app log (`L`).
 | [Windows.Media.Miracast](https://learn.microsoft.com/en-us/uwp/api/windows.media.miracast) | WinRT Miracast API docs |
 | [Bonjour SDK](https://developer.apple.com/bonjour/) | DNS-SD for AirPlay discovery on Windows |
 
-## Support the project
-
-If 1PhoneMirror saves you time on Intune docs, training, or just casual
-demos, consider tipping a coffee — it directly funds new features and
-keeps the project free for everyone.
-
-[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/simonskothn)
-
 ## Code signing
 
 Releases are currently **unsigned** while a code-signing certificate is
 being arranged. Windows SmartScreen may therefore warn on first launch;
 verify the published SHA-256 on the GitHub Release page before installing.
 
-## Privacy policy
+## Privacy
 
-1PhoneMirror sends an anonymous launch ping to a maintainer-operated
-endpoint by default and checks the GitHub Releases API for updates.
-Full details — exactly what is sent, where, and how to opt out — are
-documented in [PRIVACY.md](PRIVACY.md).
+No telemetry. The only outbound request is the update check against
+the GitHub Releases API.
 
 ## License
 
@@ -269,26 +234,3 @@ license:
 | Microsoft VC++ Runtime | 14.x | Microsoft Redistributable License | C/C++ runtime DLLs |
 
 All components are GPL-3.0 compatible.
-
-## Project metadata
-
-A quick reference for sponsors and packagers.
-
-| Field | Value |
-|-------|-------|
-| **Project name** | 1PhoneMirror |
-| **Project URL** | https://github.com/MSEndpointMgr/1PhoneMirror |
-| **Releases** | https://github.com/MSEndpointMgr/1PhoneMirror/releases |
-| **Issue tracker** | https://github.com/MSEndpointMgr/1PhoneMirror/issues |
-| **License** | [GPL-3.0-or-later](LICENSE) (OSI-approved) |
-| **Programming language** | C++20 |
-| **Target platform** | Windows 10 1903+, Windows 11 (x64) |
-| **Maintainer** | Simon Skotheimsvik — Microsoft MVP, MSEndpointMgr |
-| **Maintainer profile** | https://linktr.ee/simonskotheimsvik |
-| **Organisation** | [MSEndpointMgr](https://github.com/MSEndpointMgr) |
-| **Distribution** | MSI installer (WiX 5), published via GitHub Releases and the [winget package `MSEndpointMgr.1PhoneMirror`](https://github.com/microsoft/winget-pkgs/tree/master/manifests/m/MSEndpointMgr/1PhoneMirror) |
-| **Artifact name pattern** | `1PhoneMirror-<version>.msi` |
-| **Build pipeline** | Built and signed locally (Azure Trusted Signing) via `scripts/release.ps1`, then published to GitHub Releases by hand. CI (`release.yml`) is a manual validation build only and never publishes a release. |
-| **Reproducible builds** | Yes — vcpkg manifest pins all dependencies (FFmpeg `gpl,x264`, SDL2, OpenSSL); the workflow uses the exact toolchain |
-| **Funding** | https://buymeacoffee.com/simonskothn |
-

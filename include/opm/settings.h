@@ -50,13 +50,6 @@ struct Settings {
     // Applied immediately when toggled and again at startup.
     bool always_on_top = false;
 
-    // Opt-in anonymous launch ping. When true, the app POSTs a one-shot
-    // {install_id, version, <anonymous usage counts>} payload to the
-    // telemetry endpoint on each launch. No IP, hostname, username, MAC,
-    // device identifiers, or screen contents are sent. Defaults to false;
-    // user enables it from the Settings panel.
-    bool telemetry_enabled = true;
-
     // Webcam drawer (TODO.md #9). Persisted so the user's "show my hands"
     // preference survives a restart. webcam_device_id is the MF symbolic
     // link returned by WebcamCapture::enumerate(); empty = system default.

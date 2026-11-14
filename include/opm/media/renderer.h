@@ -318,9 +318,6 @@ private:
     int bezel_tip_w2_ = 0, bezel_tip_h2_ = 0;
 
     // Logo texture (loaded from PNG)
-    SDL_Texture* logo_texture_ = nullptr;
-    int logo_tex_w_ = 0, logo_tex_h_ = 0;
-    void load_logo_texture();
 
     // Waiting screen
     SDL_Texture* waiting_tex_ = nullptr;
@@ -427,7 +424,6 @@ private:
     BtnRect settings_toggle_snagit_btn_;
     BtnRect settings_toggle_compname_btn_;
     BtnRect settings_toggle_aot_btn_;
-    BtnRect settings_toggle_telemetry_btn_;
     BtnRect settings_toggle_webcam_mirror_btn_;
     BtnRect settings_toggle_webcam_record_btn_;
     BtnRect settings_toggle_resize_btn_;

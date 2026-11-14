@@ -1,12 +1,7 @@
 name: Build MSI (validation only)
 
-# CI builds the MSI for VALIDATION ONLY. It never publishes a GitHub Release
-# and is NOT triggered by tags. Official releases are produced locally and
-# signed via Azure Trusted Signing (scripts/release.ps1), then published by
-# hand. This keeps the signed, hashed MSI from the local release the single
-# source of truth and prevents CI from rebuilding a differently-hashed,
-# unsigned artifact that would clobber the release and break winget hash
-# validation.
+# Manual validation build: uploads an unsigned artifact, never publishes a
+# GitHub Release.
 on:
   workflow_dispatch:
 

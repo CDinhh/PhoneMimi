@@ -1,11 +1,10 @@
 # AGENTS.md — 1PhoneMirror
 
 C++20 Windows screen-mirroring receiver (AirPlay, Android/scrcpy, Miracast, Cast).
-Single-binary SDL2 + FFmpeg desktop app, plus a small C# Azure Functions
-telemetry backend under [telemetry/](telemetry/).
+Single-binary SDL2 + FFmpeg desktop app. Fork of MSEndpointMgr/1PhoneMirror
+(GPL-3.0); no telemetry.
 
-For user-facing docs see [README.md](README.md), [GETTING_STARTED.md](GETTING_STARTED.md),
-[PRIVACY.md](PRIVACY.md), [GOVERNANCE.md](GOVERNANCE.md), [DISTRIBUTION.md](DISTRIBUTION.md).
+For user-facing docs see [README.md](README.md), [GETTING_STARTED.md](GETTING_STARTED.md).
 
 ## Build & run
 
@@ -35,8 +34,6 @@ a Release build before tagging.
 | [resources/](resources) | `.rc`, app manifest, icons embedded into the exe. |
 | [installer/](installer) | WiX 5 `.wxs` source + `THIRD_PARTY_LICENSES.txt`. |
 | [scripts/](scripts), [package.ps1](package.ps1) | Build + MSI/Intune packaging. |
-| [telemetry/](telemetry) | **Separate** .NET 8 Azure Functions project — deployed via `azd up`, not part of the C++ build. See [telemetry/README.md](telemetry/README.md). |
-| [manifests/](manifests) | winget manifest fork copy (publish via [.github/workflows/winget.yml](.github/workflows/winget.yml)). |
 | [docs/screenshots/](docs/screenshots) | README screenshots only. |
 
 ## Architecture rules
@@ -54,6 +51,10 @@ a Release build before tagging.
   (see the `airplay_.disconnect_source` / `android_disconnect` call sites in
   `src/app.cpp`). Blocking the UI thread surfaces as "Not Responding" and
   leaves iOS unable to reconnect.
+- **Child processes must not inherit our sockets.** `spawn_capture()` in
+  `src/android/scrcpy_receiver.cpp` passes an explicit handle list. The
+  adb daemon outlives the app; if it inherits the 7000/7100 listeners the
+  next launch can't receive AirPlay connections.
 - **Multi-device support.** AirPlay can hold multiple sources; Android keeps
   one `AndroidSession` per serial in `scrcpy_sessions_`. The bottom-bezel dot
   picker is driven by `App::source_order_` — preserve insertion order.
@@ -108,25 +109,9 @@ a Release build before tagging.
   invokes WiX 5. Signs via Azure Trusted Signing with `-AzureSign` (cloud key,
   no local cert) or a local cert via `-SignCertThumbprint`.
   `-IntuneWinAppUtil <path>` wraps the MSI for Intune.
-- **Release (local, authoritative):** `.\scripts\release.ps1` builds, signs
-  (Azure Trusted Signing by default), and computes the SHA256 of the exact
-  signed MSI. This locally-produced signed MSI is the single source of truth;
-  publish it to GitHub Releases by hand. See [GOVERNANCE.md](GOVERNANCE.md#release-signing).
-- **CI does NOT build or release the MSI.**
-  [.github/workflows/release.yml](.github/workflows/release.yml) is a manual
-  `workflow_dispatch` validation build only — it uploads an unsigned artifact
-  and never creates/overwrites a GitHub Release. This prevents CI from
-  clobbering the signed release with a differently-hashed, unsigned rebuild
-  (which previously broke winget hash validation).
-- **winget:** [.github/workflows/winget.yml](.github/workflows/winget.yml) is a
-  manual `workflow_dispatch` that submits `MSEndpointMgr.1PhoneMirror` against
-  an already-published signed release. It no longer chains off any CI build.
-
-## Telemetry subproject ([telemetry/](telemetry))
-
-Independent .NET 8 isolated-worker Functions app (`PingFunction`,
-`DownloadFunction`, `HealthFunction`). Deploy with `azd up` from
-[telemetry/](telemetry); do not couple it to the C++ build. Payload
-schema and what's stored is documented in [telemetry/README.md](telemetry/README.md)
-and [PRIVACY.md](PRIVACY.md) — keep them in sync if you change the JSON
-shape or add a field.
+- **Portable:** `.\package.ps1 -Portable` - same build + staging, then copies
+  the result to `app\` (git-ignored) and stops before WiX. Run this after
+  every code change; `app\1PhoneMirror.exe` is the copy the owner uses.
+- **CI:** [.github/workflows/release.yml](.github/workflows/release.yml) is a
+  manual `workflow_dispatch` validation build that uploads an unsigned
+  artifact; it never creates a GitHub Release.

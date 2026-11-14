@@ -57,7 +57,6 @@ set(NETWORK_SOURCES
     src/network/tcp_server.cpp
     src/network/rtsp_server.cpp
     src/network/update_check.cpp
-    src/network/telemetry.cpp
 )
 
 set(CORE_SOURCES
@@ -184,11 +183,8 @@ endif()
 # --- Install ---
 install(TARGETS 1PhoneMirror RUNTIME DESTINATION bin)
 
-# Copy logo and icon PNGs to build output directory
+# Copy icon PNGs to build output directory
 add_custom_command(TARGET 1PhoneMirror POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_SOURCE_DIR}/MSEndpointMGRLogoBig.PNG"
-        "$<TARGET_FILE_DIR:1PhoneMirror>/MSEndpointMGRLogoBig.PNG"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_SOURCE_DIR}/apple_icon.png"
         "$<TARGET_FILE_DIR:1PhoneMirror>/apple_icon.png"

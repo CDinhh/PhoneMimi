@@ -1,6 +1,7 @@
 # build/
 build/
 dist/
+app/
 
 # IDE
 .vs/
@@ -35,5 +36,4 @@ compile_commands.json
 
 crash_pin.log
 *.log
-manifests/
 ffmpeg-rebuild.log

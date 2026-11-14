@@ -835,7 +835,6 @@ bool Renderer::init(const std::string& title, int /*width*/, int /*height*/) {
     SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
 
     load_icon_texture();
-    load_logo_texture();
 
     // Load persisted user settings (bezel colour, screenshot toggles) BEFORE
     // the first phone-frame generate so the initial texture uses the saved
@@ -1212,7 +1211,6 @@ void Renderer::shutdown() {
     if (pin_label_tex_) { SDL_DestroyTexture(pin_label_tex_); pin_label_tex_ = nullptr; }
     if (pin_digits_tex_) { SDL_DestroyTexture(pin_digits_tex_); pin_digits_tex_ = nullptr; }
     if (icon_texture_) { SDL_DestroyTexture(icon_texture_); icon_texture_ = nullptr; }
-    if (logo_texture_) { SDL_DestroyTexture(logo_texture_); logo_texture_ = nullptr; }
     if (ios_instr_tex_) { SDL_DestroyTexture(ios_instr_tex_); ios_instr_tex_ = nullptr; }
     if (android_instr_tex_) { SDL_DestroyTexture(android_instr_tex_); android_instr_tex_ = nullptr; }
     if (ios_icon_tex_) { SDL_DestroyTexture(ios_icon_tex_); ios_icon_tex_ = nullptr; }
@@ -1281,37 +1279,6 @@ void Renderer::load_icon_texture() {
     DeleteObject(ii.hbmColor);
     DeleteObject(ii.hbmMask);
     DestroyIcon(hIcon);
-#endif
-}
-
-void Renderer::load_logo_texture() {
-#ifdef _WIN32
-    // Find logo PNG next to executable
-    char exe_path[MAX_PATH];
-    GetModuleFileNameA(nullptr, exe_path, MAX_PATH);
-    std::string dir(exe_path);
-    auto pos = dir.find_last_of("\\/");
-    if (pos != std::string::npos) dir = dir.substr(0, pos);
-    std::string logo_path = dir + "\\MSEndpointMGRLogoBig.PNG";
-
-    int w = 0, h = 0, channels = 0;
-    unsigned char* data = stbi_load(logo_path.c_str(), &w, &h, &channels, 4);
-    if (!data) {
-        std::cout << "[Renderer] Logo not found: " << logo_path << "\n";
-        return;
-    }
-
-    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "best");
-    logo_texture_ = SDL_CreateTexture(sdl_renderer_, SDL_PIXELFORMAT_RGBA32,
-                                       SDL_TEXTUREACCESS_STATIC, w, h);
-    if (logo_texture_) {
-        SDL_SetTextureBlendMode(logo_texture_, SDL_BLENDMODE_BLEND);
-        SDL_UpdateTexture(logo_texture_, nullptr, data, w * 4);
-        logo_tex_w_ = w;
-        logo_tex_h_ = h;
-        std::cout << "[Renderer] Logo loaded: " << w << "x" << h << "\n";
-    }
-    stbi_image_free(data);
 #endif
 }
 
@@ -1571,8 +1538,14 @@ void Renderer::run() {
             case SDL_TEXTINPUT:
                 if (android_kbd_on_ && !android_panel_visible_ && android_input_active_()) {
                     AndroidInput in;
-                    in.kind = AndroidInput::Kind::Text;
                     in.text = event.text.text;
+                    // scrcpy's text injection only handles ASCII; accented
+                    // text (Vietnamese via Unikey, ...) is pasted instead.
+                    // shortcut: overwrites the phone clipboard, switch to a
+                    // UHID keyboard if that ever matters.
+                    bool ascii = true;
+                    for (unsigned char c : in.text) if (c >= 0x80) { ascii = false; break; }
+                    in.kind = ascii ? AndroidInput::Kind::Text : AndroidInput::Kind::Clipboard;
                     android_input_fn_(in);
                     break;
                 }
@@ -2300,11 +2273,6 @@ void Renderer::run() {
                                         settings_toggle_aot_btn_.w, settings_toggle_aot_btn_.h)) {
                                 settings_.always_on_top = !settings_.always_on_top;
                                 SDL_SetWindowAlwaysOnTop(window_, settings_.always_on_top ? SDL_TRUE : SDL_FALSE);
-                                settings_.save();
-                            }
-                            if (in_rect(mx, my, settings_toggle_telemetry_btn_.x, settings_toggle_telemetry_btn_.y,
-                                        settings_toggle_telemetry_btn_.w, settings_toggle_telemetry_btn_.h)) {
-                                settings_.telemetry_enabled = !settings_.telemetry_enabled;
                                 settings_.save();
                             }
                             if (settings_toggle_webcam_mirror_btn_.w > 0 &&
@@ -5589,7 +5557,6 @@ void Renderer::draw_settings_panel() {
 
     int swatches_per_row = 3;
     int swatch_rows = (N_PRESETS + swatches_per_row - 1) / swatches_per_row;
-    int telemetry_sub_h = std::max(10, label_h * 4 / 5);
     int total_h = pad + title_h + row_gap
                 + swatch_rows * (swatch + row_gap)
                 + row_gap + label_h + row_gap            // toggle 1 (save)
@@ -5597,8 +5564,6 @@ void Renderer::draw_settings_panel() {
                 + label_h + row_gap                       // toggle 3 (Snagit)
                 + label_h + row_gap                       // toggle 4 (computer name)
                 + label_h + row_gap                       // toggle 5 (always on top)
-                + (label_h + 2)                           // toggle 6 (telemetry)
-                + 3 * (telemetry_sub_h + 1) + row_gap     // telemetry subtitle (3 lines)
                 + label_h + row_gap                       // toggle 7 (file log)
                 + label_h + row_gap                       // toggle 8 (webcam mirror)
                 + label_h + row_gap                       // toggle 9 (webcam in recording)
@@ -5734,27 +5699,6 @@ void Renderer::draw_settings_panel() {
         "Always keep window on top",
         settings_.always_on_top, cy);
     cy += label_h + row_gap;
-    settings_toggle_telemetry_btn_ = draw_toggle(
-        "Send anonymous usage ping (recommended)",
-        settings_.telemetry_enabled, cy);
-    cy += label_h + 2;
-    // Subtitle: explain what is collected and why. Always-visible (no hover
-    // tooltips in SDL); rendered dim/smaller so it doesn't crowd the row.
-    {
-        int sub_h    = std::max(10, label_h * 4 / 5);
-        int sub_box  = std::max(12, label_h + 2);
-        int sub_x    = panel_x + pad + sub_box + std::max(6, sub_box / 3);
-        const char* sub_lines[] = {
-            "Random install ID, app version, anonymous usage counts.",
-            "No IP, no name, no content.",
-            "Inspires me to prioritize fixes and platforms."
-        };
-        for (const char* sl : sub_lines) {
-            draw_label(sl, sub_h, sub_x, cy, 150, 150, 155, false);
-            cy += sub_h + 1;
-        }
-    }
-    cy += row_gap;
     settings_toggle_log_btn_ = draw_toggle(
         "Save log file to screenshots folder (this session)",
         log_to_file_session_, cy);

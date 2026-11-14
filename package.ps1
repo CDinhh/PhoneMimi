@@ -33,6 +33,10 @@
     RFC 3161 timestamp URL used during signing. HTTPS is preferred. HTTP is
     allowed only for approved timestamp providers required by the signing toolchain.
 
+.PARAMETER Portable
+    Stop after staging and copy the result to  app\  - a self-contained
+    folder you can run directly (app\1PhoneMirror.exe). No MSI, no WiX.
+
 .PARAMETER IntuneWinAppUtil
     Optional path to IntuneWinAppUtil.exe. If found (or found on PATH), the
     MSI is wrapped into a .intunewin in dist\.
@@ -63,7 +67,8 @@ param(
     [string] $SigningProfile  = $env:OPM_TRUSTED_SIGNING_PROFILE,
     [string] $SigningTenantId = $env:OPM_TRUSTED_SIGNING_TENANT_ID,
     [string] $TimestampUrl,
-    [string] $IntuneWinAppUtil
+    [string] $IntuneWinAppUtil,
+    [switch] $Portable
 )
 
 $ErrorActionPreference = 'Stop'
@@ -242,6 +247,16 @@ foreach ($f in $required) {
 $ffmpeg = Get-ChildItem $stage -Filter 'av*.dll' | Measure-Object
 if ($ffmpeg.Count -lt 3) {
     Write-Warning "Fewer than 3 FFmpeg DLLs in stage — check vcpkg deployment."
+}
+
+# ---------- 3c. Portable: app\ is the staged folder, nothing else ----------
+if ($Portable) {
+    $app = Join-Path $root 'app'
+    if (Test-Path $app) { Remove-Item -Recurse -Force $app }
+    Copy-Item -Path $stage -Destination $app -Recurse -Force
+    Get-ChildItem $app -Recurse -Include *.pdb, *.ilk, *.exp, *.lib | Remove-Item -Force
+    Write-Host "==> Portable build ready: $app\1PhoneMirror.exe" -ForegroundColor Green
+    return
 }
 
 # ---------- 4. Optional: sign the EXE before packaging ----------

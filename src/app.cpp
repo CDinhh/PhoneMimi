@@ -2,7 +2,6 @@
 #include <opm/config.h>
 #include <opm/settings.h>
 #include <opm/usage_log.h>
-#include <opm/network/telemetry.h>
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
@@ -582,17 +581,6 @@ bool App::init(const Config& config) {
     // a newer version exists or (manually invoked) when explicitly asked.
     // Network failures are swallowed silently per product spec.
     renderer_.check_for_update_async(false);
-
-    // Opt-in anonymous launch ping. No-op unless the user has enabled
-    // telemetry in the Settings panel. Fire-and-forget; never blocks startup.
-    {
-        auto s = opm::Settings::load();
-        std::ostringstream v;
-        v << OPM_VERSION_MAJOR << '.'
-          << OPM_VERSION_MINOR << '.'
-          << OPM_VERSION_PATCH;
-        opm::network::send_launch_ping_async(v.str(), s.telemetry_enabled);
-    }
 
     running_.store(true);
     return true;
