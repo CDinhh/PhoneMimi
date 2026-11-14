@@ -37,3 +37,4 @@ compile_commands.json
 crash_pin.log
 *.log
 ffmpeg-rebuild.log
+rust/target/
