@@ -608,7 +608,7 @@ static SDL_Texture* aa_disc(SDL_Renderer* r, int size, float edge) {
     long long key = (long long)size * 100000 + (long long)(edge * 16);
     auto it = cache.find(key);
     if (it != cache.end()) return it->second;
-    if (cache.size() > 400) {   // window resized a lot: drop stale sizes
+    if (cache.size() > 64) {    // window resized a lot: drop stale sizes
         for (auto& kv : cache) SDL_DestroyTexture(kv.second);
         cache.clear();
     }
@@ -3577,25 +3577,8 @@ void Renderer::render_frame() {
         uint8_t sa = star_hover ? 240 : 160;
         SDL_SetRenderDrawColor(sdl_renderer_, 220, 220, 220, sa);
 
-        // Toggle indicator — closed "-" and open "v" share the same
-        // horizontal span. The chevron is drawn with a thinner stroke so it
-        // doesn't read as bold next to the slim collapsed bar.
-        int g_sz   = std::max(8, dot_r * 6);     // total span (line length)
-        int g_half = g_sz / 2;
-        int t_bar  = std::max(1, dot_r);         // thickness of the "-" bar
-        int t_chev = std::max(1, dot_r - 1);     // thinner chevron stroke
-        auto fill_rect_centered = [&](int cx, int cy, int w, int h) {
-            SDL_Rect r{cx - w / 2, cy - h / 2, w, h};
-            SDL_RenderFillRect(sdl_renderer_, &r);
-        };
-        auto draw_thick_seg = [&](int x1, int y1, int x2, int y2, int t) {
-            int half = t / 2;
-            for (int dx = -half; dx <= half; ++dx)
-                for (int dy = -half; dy <= half; ++dy)
-                    SDL_RenderDrawLine(sdl_renderer_, x1 + dx, y1 + dy,
-                                                       x2 + dx, y2 + dy);
-        };
-        (void)fill_rect_centered; (void)draw_thick_seg; (void)t_bar; (void)t_chev; (void)g_half;
+        // Menu toggle: chevron down (menu closed) / up (open).
+        int g_sz = std::max(8, dot_r * 6);
         draw_glyph(sdl_renderer_, island_anim_ > 0.5f ? lucide::ChevronUp : lucide::ChevronDown,
                    star_cx, star_cy, g_sz * 3 / 2, 220, 224, 230, sa);
         if (star_hover) {
@@ -3725,24 +3708,10 @@ void Renderer::render_frame() {
         // Also keep the X comfortably inside the mini button — leave at
         // least ~25% padding on every side.
         if (xg_sz > mini_sz * 3 / 4) xg_sz = mini_sz * 3 / 4;
-        int xg_half = xg_sz / 2;
-        int xt_chev = std::max(1, dot_r_close - 1);
         int xcx_c   = close_mini_x + mini_sz / 2;
         int xcy_c   = close_mini_y + mini_sz / 2;
-        // Hover/normal alpha follows the toggle-indicator convention.
+        // Hover: tinted red ("destructive"), like the menu toggle otherwise.
         uint8_t xa = xhov ? 240 : 160;
-        // On hover, tint subtly red to communicate "destructive" affordance
-        // without breaking the minimalist look.
-        if (xhov) SDL_SetRenderDrawColor(sdl_renderer_, 235, 110, 110, xa);
-        else      SDL_SetRenderDrawColor(sdl_renderer_, 220, 220, 220, xa);
-        auto draw_thick_seg_x = [&](int x1, int y1, int x2, int y2, int t) {
-            int half = t / 2;
-            for (int dx = -half; dx <= half; ++dx)
-                for (int dy = -half; dy <= half; ++dy)
-                    SDL_RenderDrawLine(sdl_renderer_, x1 + dx, y1 + dy,
-                                                       x2 + dx, y2 + dy);
-        };
-        (void)draw_thick_seg_x; (void)xt_chev; (void)xg_half;
         draw_glyph(sdl_renderer_, lucide::X, xcx_c, xcy_c, xg_sz * 3 / 2,
                    xhov ? 235 : 220, xhov ? 110 : 224, xhov ? 110 : 230, xa);
 
@@ -3847,19 +3816,6 @@ void Renderer::render_frame() {
             int pmx, pmy;
             SDL_GetMouseState(&pmx, &pmy);
 
-            // Helper: filled triangle pointing right, vertices
-            //   (cx-w, cy-h), (cx-w, cy+h), (cx+w, cy)
-            auto fill_play = [&](int cx_, int cy_, int w, int h) {
-                if (w <= 0) return;
-                for (int x = 0; x <= w * 2; ++x) {
-                    // At x=0:        height = h; at x=2w:    height = 0
-                    int hh = h - (h * x) / (w * 2);
-                    SDL_RenderDrawLine(sdl_renderer_,
-                                       cx_ - w + x, cy_ - hh,
-                                       cx_ - w + x, cy_ + hh);
-                }
-            };
-
             for (size_t i = 0; i < sources.size(); ++i) {
                 int cx = start_x + (int)i * spacing;
                 BtnRect r{cx - hit_sz / 2, cy - hit_sz / 2, hit_sz, hit_sz};
@@ -3880,7 +3836,6 @@ void Renderer::render_frame() {
 
                 int icon_r = dot_r + (sources[i].active ? 2 : 1);
 
-                (void)fill_play;
                 uint8_t ia = sources[i].active ? 255 : a;
                 draw_glyph(sdl_renderer_, sources[i].paused ? lucide::Pause : lucide::Play,
                            cx, cy, icon_r * 3, 230, 234, 240, ia);
@@ -5579,7 +5534,7 @@ void Renderer::ui_toggle_(int x, int y, int h, bool on, const std::string& key) 
     SDL_SetRenderDrawColor(sdl_renderer_, mix(11, ac.r), mix(13, ac.g), mix(18, ac.b), 255);
     fill_round_rect(sdl_renderer_, x + 1, y + 1, w - 2, h - 2, (h - 2) / 2);
     int d = h - 6;
-    int kx = x + 3 + (int)std::lround(t * (w - 6 - d)) + d / 2, ky = y + h / 2;
+    int kx = x + 3 + (int)std::lround(tc * (w - 6 - d)) + d / 2, ky = y + h / 2;
     SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
     SDL_SetRenderDrawColor(sdl_renderer_, 0, 0, 0, 90);
     fill_circle(sdl_renderer_, kx, ky + 1, d / 2 + 1);
@@ -5606,7 +5561,7 @@ void Renderer::ui_segment_(int x, int y, int w, int h, const char* const* opts, 
         }
     }
     if (selected >= 0) {
-        float pos = ui_spring_(key, (float)selected);
+        float pos = std::clamp(ui_spring_(key, (float)selected), 0.0f, (float)(n - 1));
         int px = x + 3 + (int)std::lround(pos * seg_w);
         SDL_SetRenderDrawColor(sdl_renderer_, 52, 58, 71, 255);
         fill_round_rect(sdl_renderer_, px, y + 3, seg_w, ph, ph / 2);
