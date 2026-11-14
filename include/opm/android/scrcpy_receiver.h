@@ -151,6 +151,8 @@ public:
     void send_text(const std::string& utf8);
     // Sets the phone clipboard and (if paste) pastes it.
     void send_clipboard(const std::string& utf8, bool paste);
+    // Turns the phone's own display off (mirroring continues) or back on.
+    void send_display_power(bool on);
 
 private:
     bool send_ctrl_(const uint8_t* data, size_t n);

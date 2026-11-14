@@ -50,6 +50,10 @@ struct Settings {
     // Applied immediately when toggled and again at startup.
     bool always_on_top = false;
 
+    // Start mirroring an Android phone as soon as it is plugged in over
+    // USB (debugging must already be allowed on the phone).
+    bool android_auto_usb = true;
+
     // Webcam drawer (TODO.md #9). Persisted so the user's "show my hands"
     // preference survives a restart. webcam_device_id is the MF symbolic
     // link returned by WebcamCapture::enumerate(); empty = system default.

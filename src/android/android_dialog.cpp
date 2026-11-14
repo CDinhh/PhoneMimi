@@ -3,11 +3,14 @@
 #ifdef ENABLE_ANDROID
 
 #include <opm/app.h>
+#include <opm/settings.h>
 #include <opm/usage_log.h>
 
 #include <algorithm>
 #include <chrono>
 #include <iostream>
+#include <iterator>
+#include <set>
 #include <thread>
 
 namespace opm {
@@ -31,6 +34,49 @@ uint16_t pick_local_port(const std::vector<std::unique_ptr<App::AndroidSession>>
     return base;
 }
 } // namespace
+
+// USB serials are plain (e.g. "fc7639210013"); wireless ones are "ip:port"
+// or an mDNS name ("adb-..."), emulators are "emulator-...".
+static bool is_usb_serial(const std::string& s) {
+    return s.find(':') == std::string::npos &&
+           s.rfind("adb-", 0) != 0 &&
+           s.rfind("emulator-", 0) != 0;
+}
+
+void App::usb_watch_loop_() {
+    // Phones handled since they were plugged in. Each one auto-connects
+    // once per plug-in, so disconnecting it by hand sticks until re-plug.
+    std::set<std::string> seen;
+    while (!usb_watch_stop_.load()) {
+        // Re-read every round: the setting can be toggled while running.
+        if (Settings::load().android_auto_usb) {
+            std::set<std::string> attached;
+            for (auto& d : adb_.list_devices())
+                if (is_usb_serial(d.serial) && d.state == "device") attached.insert(d.serial);
+            for (auto it = seen.begin(); it != seen.end();)
+                it = attached.count(*it) ? std::next(it) : seen.erase(it);
+
+            for (const auto& serial : attached) {
+                if (usb_watch_stop_.load()) break;
+                if (!seen.insert(serial).second) continue;
+                bool running = false;
+                {
+                    std::lock_guard lk(scrcpy_mutex_);
+                    for (auto& s : scrcpy_sessions_)
+                        if (s && s->serial == serial) { running = true; break; }
+                }
+                if (running) continue;
+                std::string err;
+                if (start_android_session_(serial, &err))
+                    std::cout << "[Android] USB phone " << serial << " plugged in, mirroring\n";
+                else
+                    std::cerr << "[Android] USB auto-connect failed for " << serial << ": " << err << "\n";
+            }
+        }
+        for (int i = 0; i < 20 && !usb_watch_stop_.load(); ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+}
 
 bool App::start_android_session_(const std::string& serial,
                                  std::string* out_error) {
@@ -333,6 +379,7 @@ void App::android_send_input(const media::Renderer::AndroidInput& in) {
         case Kind::Key:       rx->send_key(in.action, in.keycode); break;
         case Kind::Text:      rx->send_text(in.text); break;
         case Kind::Clipboard: rx->send_clipboard(in.text, /*paste=*/true); break;
+        case Kind::ScreenPower: rx->send_display_power(in.action != 0); break;
     }
 }
 
@@ -340,13 +387,7 @@ std::string App::android_connect_usb() {
     if (android_jar_path_.empty())
         return "scrcpy-server.jar not found in tools/";
 
-    // USB serials are plain (e.g. "fc7639210013"); wireless ones are
-    // "ip:port" or an mDNS name ("adb-..."), emulators are "emulator-...".
-    auto is_usb = [](const std::string& s) {
-        return s.find(':') == std::string::npos &&
-               s.rfind("adb-", 0) != 0 &&
-               s.rfind("emulator-", 0) != 0;
-    };
+    auto is_usb = is_usb_serial;
 
     std::vector<android::DeviceInfo> usb;
     // The adb server may need a moment to notice a freshly plugged phone.

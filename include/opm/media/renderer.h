@@ -127,8 +127,9 @@ public:
     // left-drag = touch, wheel = scroll, Ctrl+B/H/E/P = Back/Home/Recents/Power,
     // Ctrl+K toggles keyboard forwarding (typing, Ctrl+V pastes the PC clipboard).
     struct AndroidInput {
-        enum class Kind { Touch, Scroll, Key, Text, Clipboard } kind = Kind::Touch;
+        enum class Kind { Touch, Scroll, Key, Text, Clipboard, ScreenPower } kind = Kind::Touch;
         int action = 0;               // Touch: 0 down, 1 up, 2 move. Key: 0 down, 1 up.
+                                      // ScreenPower: 0 off, 1 on.
         int x = 0, y = 0;             // source-video pixels
         int frame_w = 0, frame_h = 0; // size of the frame x/y refer to
         float hscroll = 0, vscroll = 0;
@@ -795,6 +796,7 @@ private:
     // Phone input forwarding.
     AndroidInputFn android_input_fn_;
     bool android_kbd_on_ = false;       // keyboard forwarding (Ctrl+K)
+    bool android_screen_off_ = false;   // phone display switched off (Ctrl+O)
     bool android_touch_down_ = false;   // left button held on the phone screen
     bool android_input_active_();
     // What the phone currently shows for the word the PC's IME is composing.

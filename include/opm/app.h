@@ -8,6 +8,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #ifdef ENABLE_AIRPLAY
@@ -153,6 +154,11 @@ private:
                                         const std::string& pair_addr);
     // Tear down any running session whose serial starts with `ip + ":"`.
     void android_drop_sessions_for_ip_(const std::string& ip);
+    // Mirrors a phone as soon as it is plugged in over USB (setting
+    // android_auto_usb). Runs on its own thread until shutdown.
+    void usb_watch_loop_();
+    std::thread       usb_watch_thread_;
+    std::atomic<bool> usb_watch_stop_{false};
 #endif
 
     std::atomic<bool> running_{false};

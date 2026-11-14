@@ -6942,6 +6942,18 @@ bool Renderer::android_forward_key_(const SDL_Event& ev) {
             case SDLK_h: if (down && !ev.key.repeat) tap(3);   return true;  // HOME
             case SDLK_e: if (down && !ev.key.repeat) tap(187); return true;  // APP_SWITCH
             case SDLK_p: if (down && !ev.key.repeat) tap(26);  return true;  // POWER
+            case SDLK_o:
+                // Phone display off while the mirror keeps running.
+                if (down && !ev.key.repeat) {
+                    android_screen_off_ = !android_screen_off_;
+                    AndroidInput in;
+                    in.kind = AndroidInput::Kind::ScreenPower;
+                    in.action = android_screen_off_ ? 0 : 1;
+                    android_input_fn_(in);
+                    toast(android_screen_off_ ? "Phone screen: OFF, still mirroring (Ctrl+O to turn on)"
+                                              : "Phone screen: ON");
+                }
+                return true;
             case SDLK_v:
                 if (!android_kbd_on_) return false;
                 if (down && !ev.key.repeat) {

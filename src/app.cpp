@@ -368,6 +368,7 @@ bool App::init(const Config& config) {
         renderer_.set_android_input_handler(
             [this](const media::Renderer::AndroidInput& in) { android_send_input(in); });
         renderer_.set_android_usb_handler([this]() { return android_connect_usb(); });
+        usb_watch_thread_ = std::thread([this]() { usb_watch_loop_(); });
         renderer_.set_android_qr_handler(
             [this](const std::string& name, const std::string& password,
                    std::function<bool()> cancelled) {
@@ -658,6 +659,8 @@ void App::shutdown() {
     cast_.stop();
 #endif
 #ifdef ENABLE_ANDROID
+    usb_watch_stop_.store(true);
+    if (usb_watch_thread_.joinable()) usb_watch_thread_.join();
     scrcpy_sessions_.clear();
 #if defined(_WIN32)
     // Final sweep is only done when the user explicitly opted in.

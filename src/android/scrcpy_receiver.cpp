@@ -622,7 +622,7 @@ size_t utf8_prefix(const std::string& s, size_t max) {
 }
 enum : uint8_t {
     MSG_KEYCODE = 0, MSG_TEXT = 1, MSG_TOUCH = 2, MSG_SCROLL = 3,
-    MSG_SET_CLIPBOARD = 9,
+    MSG_SET_CLIPBOARD = 9, MSG_SET_DISPLAY_POWER = 10,
 };
 } // namespace
 
@@ -708,6 +708,14 @@ void ScrcpyReceiver::send_clipboard(const std::string& s, bool paste) {
     put32(b.data() + 10, (uint32_t)n);
     memcpy(b.data() + 14, s.data(), n);
     send_ctrl_(b.data(), b.size());
+}
+
+void ScrcpyReceiver::send_display_power(bool on) {
+    if (!control_ready()) return;
+    // 0 = off. "On" is sent as 2 so it reads as true for scrcpy 3.x (a
+    // boolean) and as POWER_MODE_NORMAL for the older 2.x servers.
+    const uint8_t b[2] = { MSG_SET_DISPLAY_POWER, static_cast<uint8_t>(on ? 2 : 0) };
+    send_ctrl_(b, sizeof(b));
 }
 
 } // namespace opm::android
