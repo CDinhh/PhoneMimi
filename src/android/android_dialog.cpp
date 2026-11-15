@@ -427,8 +427,7 @@ std::string App::android_connect_wifi(const std::string& addr) {
                    "A phone that was never paired must be paired first in PhoneMimi (press A).";
             continue;
         }
-        std::cout << "[App] Android connect (MCP): " << a << "
-";
+        std::cout << "[App] Android connect (MCP): " << a << "\n";
         std::string err;
         if (start_android_session_(a, &err)) return "Mirroring " + a;
         last = "Connected " + a + " but " + err;
