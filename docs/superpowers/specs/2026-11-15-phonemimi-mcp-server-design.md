@@ -149,13 +149,13 @@ without taking a new screenshot.
   shown in the window; if that is an iPhone and the tool is Android-only,
   fall back to the first connected Android phone; if none, error.
 - MCP never switches which phone is shown in the window, except
-  `connect_usb`, which behaves exactly like plugging the phone in (the new
+  `connect_usb` / `connect_wifi`, which behave exactly like plugging the phone in (the new
   phone is shown). It still never raises or focuses the window.
 - Phones adb can see but PhoneMimi is not mirroring appear in
   `list_devices` with `mirrored: false`. adb-based tools (apps, logcat,
   files, shell, `current_app`, `ui_tree`) work on them; `screenshot`,
   `ocr_screen` and input tools need a mirroring session and say so in the
-  error ("call connect_usb or ask the user to connect it"). (Builder call.)
+  error ("call connect_usb / connect_wifi or ask the user to connect it"). (Builder call.)
 
 ### Tools
 
@@ -226,6 +226,12 @@ Android unless marked "any". All take optional `device`.
 - `adb_shell`: `command`, `timeout_ms` (default 15000, max 120000); returns
   exit code and output (truncated at 64 KB with a note).
 - `connect_usb`: runs the existing USB connect path and returns its status.
+- `connect_wifi`: optional `address` (`ip:port` from the phone's Wireless
+  debugging screen). Runs `adb connect` and starts mirroring, like the Add
+  Android panel's Connect. Without `address`, retries the addresses of
+  phones mirrored earlier in this run (wireless links drop often). Pairing
+  (code or QR) stays in the app UI: it needs the user at the phone. Like
+  `connect_usb`, the newly connected phone is shown in the window.
 
 ### Server instructions (sent in `initialize`)
 
