@@ -20,6 +20,10 @@ stb_image / stb_image_write
     License: Public Domain (or MIT)
     Source : https://github.com/nothings/stb
 
+nlohmann/json 3.11.3 (MCP server)
+    License: MIT
+    Source : https://github.com/nlohmann/json
+
 Lucide icons (font, lucide-static 0.469.0)
     License: ISC
     Source : https://lucide.dev/
