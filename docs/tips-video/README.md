@@ -5,7 +5,7 @@
 `tip1-3.mp4` (720x800, 30 fps, H.264) with ffmpeg-static:
 
 ```
-npm i puppeteer-core@23 ffmpeg-static@5
+npm ci                    # tools are already in node_modules on the desktop PC
 node render.mjs 1 video   # also 2, 3; copy tipN.mp4 to resources/tips/
 ```
 

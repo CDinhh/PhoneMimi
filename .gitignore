@@ -41,3 +41,6 @@ rust/target/
 
 # The portable build in app/ is committed on purpose.
 !app/**
+
+# Tools for rendering the tip videos (kept locally, see docs/tips-video/README.md)
+docs/tips-video/node_modules/
