@@ -1236,6 +1236,9 @@ bool Renderer::init(const std::string& title, int /*width*/, int /*height*/) {
         };
         version_lines_.push_back(make_ver(L"Version History", 40, 255, 255, 255));
         version_lines_.push_back({nullptr, 0, 0}); // spacer
+        version_lines_.push_back(make_ver(L"15.11.2026 \u2013 3.4.1", 34, 200, 200, 255));
+        version_lines_.push_back(make_desc(L"MCP: screenshots always show the latest screen, steadier reconnects over Wi-Fi"));
+        version_lines_.push_back({nullptr, 0, 0});
         version_lines_.push_back(make_ver(L"15.11.2026 \u2013 3.4.0", 34, 200, 200, 255));
         version_lines_.push_back(make_desc(L"Claude Code can see and drive your phones (MCP server, Settings > Phone)"));
         version_lines_.push_back({nullptr, 0, 0});

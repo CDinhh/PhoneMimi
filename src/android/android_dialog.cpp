@@ -413,8 +413,15 @@ std::string App::android_connect_wifi(const std::string& addr) {
         std::lock_guard lk(scrcpy_mutex_);
         if (!addr.empty()) tries.push_back(addr);
         else tries.assign(wifi_history_.rbegin(), wifi_history_.rend());
+        // A phone that is still mirroring needs nothing; reconnecting it
+        // would drop a working session.
+        std::string live;
         for (auto& s : scrcpy_sessions_)
-            if (s && !addr.empty() && s->serial == addr) return "Mirroring " + addr + " (already)";
+            if (s && std::find(tries.begin(), tries.end(), s->serial) != tries.end()) {
+                live = s->serial;
+                tries.erase(std::find(tries.begin(), tries.end(), s->serial));
+            }
+        if (tries.empty() && !live.empty()) return "Mirroring " + live + " (already)";
     }
     if (tries.empty())
         return "No Wi-Fi phone connected before. Give the ip:port shown on the phone under "
