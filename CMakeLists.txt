@@ -193,6 +193,8 @@ if(WIN32)
     # Windows so it's available even when ENABLE_MIRACAST is OFF.
     target_link_libraries(PhoneMimi PRIVATE windowsapp.lib)
     target_compile_definitions(PhoneMimi PRIVATE NOMINMAX)
+    # UI text is UTF-8 end to end, including narrow literals with \u escapes.
+    target_compile_options(PhoneMimi PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
     # Embed app manifest for DPI awareness (disable auto-generated manifest to avoid duplicate)
     target_sources(PhoneMimi PRIVATE resources/phonemimi.rc)
     set_target_properties(PhoneMimi PROPERTIES LINK_FLAGS "/MANIFEST:NO /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup")
