@@ -67,10 +67,13 @@ std::string quote_arg(const std::string& a) {
     return out;
 }
 
+// timeout_ms > 0: kill the child and return -2 once it has run that long,
+// even if it never closes its output (e.g. `adb shell top`).
 int spawn_capture(const std::string& exe,
                   const std::vector<std::string>& args,
                   const std::string& stdin_data,
-                  std::string* out_stdout) {
+                  std::string* out_stdout,
+                  int timeout_ms = 0) {
     SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
     HANDLE in_r=nullptr, in_w=nullptr, out_r=nullptr, out_w=nullptr;
     if (!CreatePipe(&in_r, &in_w, &sa, 0)) return -1;
@@ -130,8 +133,30 @@ int spawn_capture(const std::string& exe,
     if (out_stdout) out_stdout->clear();
     char buf[4096];
     DWORD n = 0;
-    while (ReadFile(out_r, buf, sizeof(buf), &n, nullptr) && n > 0) {
-        if (out_stdout) out_stdout->append(buf, n);
+    if (timeout_ms > 0) {
+        const ULONGLONG deadline = GetTickCount64() + (ULONGLONG)timeout_ms;
+        for (;;) {
+            DWORD avail = 0;
+            if (!PeekNamedPipe(out_r, nullptr, 0, nullptr, &avail, nullptr)) break;  // EOF
+            if (avail > 0) {
+                if (!ReadFile(out_r, buf, sizeof(buf), &n, nullptr) || n == 0) break;
+                if (out_stdout) out_stdout->append(buf, n);
+                continue;
+            }
+            if (GetTickCount64() >= deadline) {
+                TerminateProcess(pi.hProcess, 1);
+                WaitForSingleObject(pi.hProcess, 1000);
+                CloseHandle(out_r);
+                CloseHandle(pi.hProcess);
+                CloseHandle(pi.hThread);
+                return -2;
+            }
+            Sleep(10);
+        }
+    } else {
+        while (ReadFile(out_r, buf, sizeof(buf), &n, nullptr) && n > 0) {
+            if (out_stdout) out_stdout->append(buf, n);
+        }
     }
     CloseHandle(out_r);
 
@@ -172,7 +197,7 @@ HANDLE spawn_detached(const std::string& exe,
 #else
 namespace {
 int spawn_capture(const std::string&, const std::vector<std::string>&,
-                  const std::string&, std::string*) { return -1; }
+                  const std::string&, std::string*, int = 0) { return -1; }
 void* spawn_detached(const std::string&, const std::vector<std::string>&) { return nullptr; }
 }
 #endif
@@ -194,6 +219,11 @@ AdbController::AdbController() {
 #endif
 }
 AdbController::~AdbController() = default;
+
+int AdbController::run(const std::vector<std::string>& args,
+                       std::string* out, int timeout_ms) {
+    return spawn_capture(adb_path_, args, {}, out, timeout_ms);
+}
 
 int AdbController::run_(const std::vector<std::string>& args,
                         const std::string& stdin_data,

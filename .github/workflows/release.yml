@@ -103,6 +103,13 @@ jobs:
         run: |
           .\package.ps1 -Version ${{ steps.ver.outputs.version }}
 
+      - name: MCP self-test
+        shell: pwsh
+        run: |
+          $p = Start-Process dist\stage\PhoneMimi.exe -ArgumentList '--mcp-self-test' -Wait -PassThru -NoNewWindow -RedirectStandardOutput mcp.txt
+          Get-Content mcp.txt
+          if ($p.ExitCode -ne 0) { exit 1 }
+
       - name: Compute SHA256 (unsigned CI build)
         id: hash
         shell: pwsh

@@ -95,6 +95,10 @@ public:
                  const std::string& remote, const std::string& local);
     bool reverse_remove(const std::string& serial, const std::string& remote);
 
+    // Any adb command; output is stdout+stderr. Returns the exit code, or
+    // -2 when it ran longer than timeout_ms and was killed.
+    int run(const std::vector<std::string>& args, std::string* out, int timeout_ms);
+
 private:
     std::string adb_path_ = "adb";
 

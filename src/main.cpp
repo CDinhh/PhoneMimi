@@ -8,6 +8,9 @@
 #ifdef ENABLE_ANDROID
 #include <opm/android/scrcpy_receiver.h>
 #endif
+#ifdef ENABLE_MCP
+#include <opm/mcp/mcp_protocol.h>
+#endif
 #include <iostream>
 #include <string>
 #include <chrono>
@@ -228,6 +231,7 @@ void print_usage(const char* argv0) {
               << "  --list-webcams                    List available webcams and exit\n"
               << "  --webcam-test [id]                Capture ~3s from a webcam, save first frame as PPM\n"
               << "  --srp-self-test                   Run AirPlay SRP6 self-test and exit\n"
+              << "  --mcp-self-test                   Run the MCP server self-test and exit\n"
               << "  --help             Show this help\n";
 }
 
@@ -303,6 +307,10 @@ int main(int argc, char* argv[]) {
             config.cleanup_adb_on_shutdown = true;
         } else if (arg == "--force-exit-on-timeout") {
             config.force_exit_on_timeout = true;
+#ifdef ENABLE_MCP
+        } else if (arg == "--mcp-self-test") {
+            return opm::mcp::run_self_test();
+#endif
         } else if (arg == "--srp-self-test") {
             bool ok = opm::airplay::srp_pin_self_test();
             return ok ? 0 : 2;

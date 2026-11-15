@@ -13,6 +13,7 @@
 
 #include "opm/media/ocr.h"
 
+#include <algorithm>
 #include <Windows.h>
 
 #include <winrt/base.h>
@@ -127,6 +128,18 @@ OcrJobResult run_ocr_rgba(const uint8_t* rgba, int w, int h) {
         for (auto const& line : res.Lines()) {
             if (!joined.empty()) joined.push_back('\n');
             joined += hstring_to_utf8(line.Text());
+            OcrLine ol;
+            ol.text = hstring_to_utf8(line.Text());
+            float l = 1e9f, t = 1e9f, r = -1e9f, b = -1e9f;
+            for (auto const& w : line.Words()) {
+                auto br = w.BoundingRect();
+                l = (std::min)(l, br.X); t = (std::min)(t, br.Y);
+                r = (std::max)(r, br.X + br.Width); b = (std::max)(b, br.Y + br.Height);
+            }
+            if (r > l) {
+                ol.x = int(l); ol.y = int(t); ol.w = int(r - l + 0.5f); ol.h = int(b - t + 0.5f);
+            }
+            out.lines.push_back(std::move(ol));
         }
         out.ok = true;
         out.text = std::move(joined);

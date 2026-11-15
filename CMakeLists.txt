@@ -10,6 +10,7 @@ option(ENABLE_AIRPLAY "Build AirPlay receiver module" ON)
 option(ENABLE_MIRACAST "Build Miracast receiver module (Windows only)" ON)
 option(ENABLE_CAST "Build Google Cast receiver module" ON)
 option(ENABLE_ANDROID "Build Android (scrcpy-based) screen mirror receiver" ON)
+option(ENABLE_MCP "Build the MCP server (Claude Code control)" ON)
 option(ENABLE_WEBCAM "Build webcam drawer (Media Foundation, Windows only)" ON)
 
 # --- Dependencies via vcpkg or find_package ---
@@ -100,6 +101,17 @@ if(ENABLE_CAST)
     )
 endif()
 
+if(ENABLE_MCP)
+    list(APPEND CORE_SOURCES
+        src/mcp/mcp_protocol.cpp
+        src/mcp/mcp_util.cpp
+        src/mcp/frame_tap.cpp
+        src/mcp/mcp_tools.cpp
+        src/mcp/mcp_server.cpp
+        src/mcp/mcp_self_test.cpp
+    )
+endif()
+
 if(ENABLE_ANDROID)
     list(APPEND CORE_SOURCES
         src/android/scrcpy_receiver.cpp
@@ -158,6 +170,9 @@ if(ENABLE_CAST)
     target_include_directories(PhoneMimi PRIVATE ${CMAKE_SOURCE_DIR}/src)
 endif()
 
+if(ENABLE_MCP)
+    target_compile_definitions(PhoneMimi PRIVATE ENABLE_MCP=1)
+endif()
 if(ENABLE_ANDROID)
     target_compile_definitions(PhoneMimi PRIVATE ENABLE_ANDROID=1)
 endif()
