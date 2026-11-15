@@ -357,6 +357,12 @@ void test_tools() {
     CHECK(text_of(r).find("Gone") == std::string::npos);
     h.adb_replies["exec-out uiautomator dump /dev/tty"] = {0, kDump};
 
+    // logcat filters: -t counts before filtering, so a wide window is read
+    // and trimmed here (found on the real phone).
+    h.adb_replies["logcat -d -v threadtime -t 20000 *:W"] = {0, "w1\nw2\nw3\n"};
+    r = tool(t, "logcat", {{"level", "w"}, {"lines", 2}});
+    CHECK(text_of(r) == "w2\nw3\n");
+
     // App exit: a long wait_for ends at once.
     h.is_closing = true;
     auto w0 = std::chrono::steady_clock::now();

@@ -742,10 +742,12 @@ ToolTable make_tools(Host& host) {
             if (!d) return err(e);
             int lines = std::clamp(int_arg(a, "lines", 200), 1, 2000);
             std::vector<std::string> args = {"logcat", "-d", "-v", "threadtime"};
-            std::string since = str_arg(a, "since");
+            std::string since = str_arg(a, "since"), pkg = str_arg(a, "package");
+            // logcat's -t counts lines before filtering, so with a filter
+            // read a wide window and keep the last `lines` here.
+            bool filtered = !str_arg(a, "level").empty() || !str_arg(a, "tag").empty() || !pkg.empty();
             if (!since.empty()) { args.push_back("-T"); args.push_back(since); }
-            else { args.push_back("-t"); args.push_back(std::to_string(lines)); }
-            std::string pkg = str_arg(a, "package");
+            else { args.push_back("-t"); args.push_back(std::to_string(filtered ? 20000 : lines)); }
             if (!pkg.empty()) {
                 std::string pid;
                 c.adb(*d, {"shell", "pidof", pkg}, &pid);
@@ -760,7 +762,7 @@ ToolTable make_tools(Host& host) {
             else if (!level.empty()) args.push_back("*:" + level);
             int rc = c.adb(*d, args, &out, 20000);
             if (rc != 0) return err(adb_fail(rc, out, 20000));
-            if (!since.empty()) {   // keep the last `lines`
+            if (!since.empty() || filtered) {   // keep the last `lines`
                 size_t pos = out.size();
                 for (int n = 0; n <= lines && pos != std::string::npos && pos > 0; ++n)
                     pos = out.rfind('\n', pos - 1);
