@@ -130,7 +130,8 @@ public:
     // left-drag = touch, wheel = scroll, Ctrl+B/H/E/P = Back/Home/Recents/Power,
     // Ctrl+K toggles keyboard forwarding (typing, Ctrl+V pastes the PC clipboard).
     struct AndroidInput {
-        enum class Kind { Touch, Scroll, Key, Text, Clipboard, ScreenPower } kind = Kind::Touch;
+        // Clipboard sets the phone clipboard and pastes; SetClipboard only sets it.
+        enum class Kind { Touch, Scroll, Key, Text, Clipboard, ScreenPower, SetClipboard } kind = Kind::Touch;
         int action = 0;               // Touch: 0 down, 1 up, 2 move. Key: 0 down, 1 up.
                                       // ScreenPower: 0 off, 1 on.
         int x = 0, y = 0;             // source-video pixels
@@ -146,6 +147,20 @@ public:
     // mirroring it; returns "Mirroring <serial>" or an explanation.
     using AndroidUsbFn = std::function<std::string()>;
     void set_android_usb_handler(AndroidUsbFn fn) { android_usb_fn_ = std::move(fn); }
+
+    // Files dropped on the window (full UTF-8 paths).
+    using AndroidDropFn = std::function<void(std::vector<std::string>)>;
+    void set_android_drop_handler(AndroidDropFn fn) { android_drop_fn_ = std::move(fn); }
+    // Thread-safe: shown as a toast on the next frame.
+    void post_toast(const std::string& s) { std::lock_guard lk(async_mutex_); async_toast_ = s; }
+    // Thread-safe: text copied on the phone, put on the PC clipboard.
+    void set_clipboard_from_phone(const std::string& s) {
+        std::lock_guard lk(async_mutex_);
+        async_clip_ = s;
+        async_clip_set_ = true;
+    }
+    // Thread-safe: cable setup hint (android::SetupHint / android::Brand values).
+    void set_setup_state(int hint, int brand) { setup_brand_.store(brand); setup_hint_.store(hint); }
 
     // MCP switch in Settings > Phone. The handler starts/stops the server
     // (off the UI thread) and reports back with set_mcp_status().
@@ -831,19 +846,9 @@ private:
     BtnRect android_disconnect_btn_;
     BtnRect android_close_btn_;
     BtnRect android_help_btn_;
-    BtnRect android_help_close_btn_;
-    BtnRect android_help_panel_rect_;
-    bool android_help_visible_ = false;
-    int  android_help_scroll_ = 0;       // pixels scrolled down
-    int  android_help_max_scroll_ = 0;   // computed each draw
-    BtnRect android_help_track_rect_{};  // scrollbar track hit area
-    BtnRect android_help_thumb_rect_{};  // scrollbar thumb hit area
-    bool android_help_dragging_ = false; // mouse-drag on scrollbar thumb
-    int  android_help_drag_offset_ = 0;
     AndroidConnectFn android_connect_fn_;
     AndroidDisconnectFn android_disconnect_fn_;
     void draw_android_panel();
-    void draw_android_help();
     void android_submit();
 
     // QR pairing mode of the connect panel.
@@ -857,6 +862,20 @@ private:
     void android_qr_start();
     AndroidUsbFn android_usb_fn_;
     McpFn mcp_fn_;
+    AndroidDropFn android_drop_fn_;
+    std::vector<std::string> drop_paths_;
+    std::mutex async_mutex_;
+    std::string async_toast_, async_clip_;
+    bool async_clip_set_ = false;
+    std::string last_synced_clip_;        // last text shared between PC and phone
+    std::atomic<int> setup_hint_{0}, setup_brand_{0};
+    int setup_hint_seen_ = 0;             // hint at the previous frame
+    bool setup_guide_visible_ = false;
+    bool setup_guide_auto_ = false;       // opened by a plugged-in phone
+    int setup_guide_tab_ = 0;             // 0 Samsung, 1 Xiaomi, 2 OPPO, 3 Other
+    BtnRect setup_guide_rect_, setup_guide_close_btn_, setup_guide_tab_btns_[4];
+    void draw_setup_guide_();
+    BtnRect settings_toggle_mutephone_btn_;
     std::mutex mcp_status_mutex_;
     std::string mcp_status_;
     BtnRect settings_toggle_mcp_btn_;

@@ -17,6 +17,8 @@
 
 #ifdef ENABLE_ANDROID
 #include <opm/android/scrcpy_receiver.h>
+#include <opm/android/scrcpy_util.h>
+#include <opm/android/setup_hint.h>
 #endif
 #include <opm/mcp/frame_tap.h>
 #include <opm/mcp/mcp_protocol.h>
@@ -478,6 +480,47 @@ void test_spawn() {
     CHECK(rc == 0 && out.find("YES") != std::string::npos);
     fs::remove(p, ec);
 }
+
+// 3.5.0: cable setup hint, device clipboard messages, audio resampler.
+void test_android_helpers() {
+    using namespace opm::android;
+    UsbId x = parse_usb_id("USB\\VID_2717&PID_FF48\\fc7639210013");
+    CHECK(x.vid == 0x2717 && x.pid == 0xFF48);
+    CHECK(parse_usb_id("HID\\VID_046D&PID_C52B").vid == 0);
+    CHECK(brand_for(0x04E8) == Brand::Samsung && brand_for(0x2717) == Brand::Xiaomi &&
+          brand_for(0x22D9) == Brand::Oppo && brand_for(0x18D1) == Brand::Other);
+    std::vector<UsbId> xiaomi = {{0x046D, 0xC52B}, {0x2717, 0xFF48}};
+    auto st = decide_setup(xiaomi, false, false);
+    CHECK(st.hint == SetupHint::DebuggingOff && st.brand == Brand::Xiaomi);
+    CHECK(decide_setup(xiaomi, true, false).hint == SetupHint::None);
+    CHECK(decide_setup(xiaomi, false, true).hint == SetupHint::Unauthorized);
+    CHECK(decide_setup({{0x05AC, 0x12A8}}, false, false).hint == SetupHint::IPhoneCable);
+    CHECK(decide_setup({{0x05AC, 0x024F}}, false, false).hint == SetupHint::None);  // Apple keyboard
+    CHECK(decide_setup({}, false, false).hint == SetupHint::None);
+
+    // clipboard "hi" + ack + UHID(2 bytes) + start of clipboard "abc"
+    std::vector<uint8_t> m = {0, 0, 0, 0, 2, 'h', 'i', 1, 0, 0, 0, 0, 0, 0, 0, 7,
+                              2, 0, 1, 0, 2, 9, 9, 0, 0, 0, 0, 3, 'a'};
+    std::vector<std::string> clips;
+    size_t used = parse_device_messages(m.data(), m.size(), &clips);
+    CHECK(clips.size() == 1 && clips[0] == "hi" && used == 23);
+    m.erase(m.begin(), m.begin() + (std::ptrdiff_t)used);
+    m.push_back('b');
+    m.push_back('c');
+    clips.clear();
+    used = parse_device_messages(m.data(), m.size(), &clips);
+    CHECK(clips.size() == 1 && clips[0] == "abc" && used == m.size());
+    uint8_t bad[] = {9, 0};
+    CHECK(parse_device_messages(bad, 2, &clips) == SIZE_MAX);
+
+    // 4800 frames of 48 kHz in two calls -> about 4410 frames of 44.1 kHz.
+    PcmResampler48to441 rs;
+    std::vector<int16_t> in(4800 * 2, 1000), out;
+    rs.feed(in.data(), 2400, &out);
+    rs.feed(in.data() + 4800, 2400, &out);
+    CHECK(out.size() / 2 >= 4408 && out.size() / 2 <= 4411);
+    CHECK(!out.empty() && out[0] == 1000 && out.back() == 1000);
+}
 #endif
 
 } // namespace
@@ -490,6 +533,7 @@ int run_self_test() {
     test_server();
 #ifdef ENABLE_ANDROID
     test_spawn();
+    test_android_helpers();
 #endif
     if (g_fails == 0)
         std::cout << "mcp self-test: PASS (" << g_checks << " checks)\n";

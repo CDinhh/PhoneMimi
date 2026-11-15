@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PhoneMimi VERSION 3.4.3 LANGUAGES C CXX)
+project(PhoneMimi VERSION 3.5.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -116,6 +116,8 @@ endif()
 if(ENABLE_ANDROID)
     list(APPEND CORE_SOURCES
         src/android/scrcpy_receiver.cpp
+        src/android/scrcpy_util.cpp
+        src/android/setup_hint.cpp
         src/android/android_dialog.cpp
     )
 endif()

@@ -91,6 +91,9 @@ public:
     // success, otherwise why not.
     std::string android_connect_wifi(const std::string& addr);
 
+    // Files dropped on the window (see android_dialog.cpp).
+    void android_drop_files(std::vector<std::string> paths);
+
     // QR-code pairing (Wireless debugging -> "Pair device with QR code").
     // The caller shows a QR encoding `WIFI:T:ADB;S:<name>;P:<password>;;`.
     // Once the phone scans it, it advertises an `_adb-tls-pairing._tcp`

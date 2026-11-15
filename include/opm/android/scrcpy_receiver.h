@@ -62,7 +62,8 @@ public:
     bool disconnect(const std::string& ip_port = {});
 
     // `adb devices -l`, parsed.
-    std::vector<DeviceInfo> list_devices(int timeout_ms = 0);   // 0 = no deadline
+    // 0 = no deadline. Unauthorized phones are dropped unless asked for.
+    std::vector<DeviceInfo> list_devices(int timeout_ms = 0, bool keep_unauthorized = false);
 
     // `adb mdns services` — returns one entry per discovered service.
     // adb ships its own mDNS implementation that often works even when
@@ -128,6 +129,8 @@ public:
         bool control = true;                  // open the control channel (mouse/keyboard)
         bool hide_soft_keyboard = true;       // keep the on-screen keyboard of the phone down
         bool screen_off = false;              // switch the phone display off once connected
+        bool audio = false;                   // forward the phone's sound (Android 11+)
+        bool audio_dup = true;                // keep playing on the phone too (Android 13+)
     };
 
     // Spawns the scrcpy server on the device, opens the reverse tunnel,
@@ -140,6 +143,10 @@ public:
 
     void set_video_callback(media::OnVideoFrame cb) { on_video_ = std::move(cb); }
     void set_disconnect_callback(std::function<void()> cb) { on_disconnect_ = std::move(cb); }
+    // 44.1 kHz stereo s16 frames of the phone's sound (when Config::audio).
+    void set_audio_callback(media::OnAudioFrame cb) { on_audio_ = std::move(cb); }
+    // Text the user copied on the phone (scrcpy clipboard sync).
+    void set_clipboard_callback(std::function<void(const std::string&)> cb) { on_clipboard_ = std::move(cb); }
 
     // After start() succeeds, these are populated from the device metadata
     // header sent by the scrcpy server.
@@ -168,6 +175,7 @@ private:
     void attach_virtual_keyboard_();
     std::chrono::steady_clock::time_point next_paste_{};
     void worker_();
+    void audio_worker_();
 
     Config cfg_;
     AdbController* adb_ = nullptr;
@@ -183,6 +191,10 @@ private:
 
     media::OnVideoFrame on_video_;
     std::function<void()> on_disconnect_;
+    media::OnAudioFrame on_audio_;
+    std::function<void(const std::string&)> on_clipboard_;
+    uintptr_t audio_sock_ = (uintptr_t)-1;
+    std::thread audio_thread_;
 
     // Opaque handles — kept as void*/uintptr_t so this header avoids
     // dragging in <winsock2.h> / <windows.h> for every translation unit.
@@ -190,7 +202,7 @@ private:
     void*     server_proc_ = nullptr;  // HANDLE on Windows
     uintptr_t ctrl_sock_ = (uintptr_t)-1;  // control channel (or -1)
     std::mutex ctrl_mutex_;
-    std::thread ctrl_drain_;                // discards device->PC messages
+    std::thread ctrl_drain_;                // reads device->PC messages (clipboard)
     uint64_t clip_seq_ = 1;
 };
 

@@ -1258,6 +1258,9 @@ bool Renderer::init(const std::string& title, int /*width*/, int /*height*/) {
         };
         version_lines_.push_back(make_ver(L"Version History", 40, 255, 255, 255));
         version_lines_.push_back({nullptr, 0, 0}); // spacer
+        version_lines_.push_back(make_ver(L"16.11.2026 \u2013 3.5.0", 34, 200, 200, 255));
+        version_lines_.push_back(make_desc(L"Phone sound on the PC, clipboard both ways, drop files to install or send, cable setup guide"));
+        version_lines_.push_back({nullptr, 0, 0});
         version_lines_.push_back(make_ver(L"16.11.2026 \u2013 3.4.3", 34, 200, 200, 255));
         version_lines_.push_back(make_desc(L"Sharper mirrored video: no more over-shrinking, 4 samples per pixel"));
         version_lines_.push_back({nullptr, 0, 0});
@@ -1449,6 +1452,35 @@ void Renderer::run() {
 
             case SDL_KEYUP:
                 android_forward_key_(event);
+                break;
+
+            case SDL_DROPFILE:
+                if (event.drop.file) {
+                    drop_paths_.emplace_back(event.drop.file);
+                    SDL_free(event.drop.file);
+                }
+                break;
+
+            case SDL_DROPCOMPLETE:
+                if (!drop_paths_.empty() && android_drop_fn_) android_drop_fn_(std::move(drop_paths_));
+                drop_paths_.clear();
+                break;
+
+            case SDL_CLIPBOARDUPDATE:
+                // Text copied on the PC goes to the phone clipboard (no paste).
+                // Skips our own write of the phone's text and non-text data.
+                if (android_input_active_() && SDL_HasClipboardText()) {
+                    char* t = SDL_GetClipboardText();
+                    std::string text = t ? t : "";
+                    SDL_free(t);
+                    if (!text.empty() && text != last_synced_clip_) {
+                        last_synced_clip_ = text;
+                        AndroidInput in;
+                        in.kind = AndroidInput::Kind::SetClipboard;
+                        in.text = text;
+                        android_input_fn_(in);
+                    }
+                }
                 break;
 
             case SDL_KEYDOWN:
@@ -1724,45 +1756,28 @@ void Renderer::run() {
                 break;
 
             case SDL_MOUSEBUTTONDOWN:
+                // The setup guide takes every left click while open: tabs
+                // inside it, and close on its button or anywhere outside.
+                if (setup_guide_visible_ && event.button.button == SDL_BUTTON_LEFT) {
+                    int mx = event.button.x, my = event.button.y;
+                    auto in = [&](const BtnRect& r) {
+                        return r.w > 0 && in_rect(mx, my, r.x, r.y, r.w, r.h);
+                    };
+                    if (in(setup_guide_close_btn_) || !in(setup_guide_rect_)) {
+                        setup_guide_visible_ = false;
+                        setup_guide_auto_ = false;
+                        break;
+                    }
+                    for (int i = 0; i < 4; ++i)
+                        if (in(setup_guide_tab_btns_[i])) setup_guide_tab_ = i;
+                    break;
+                }
                 // Android panel intercepts left-clicks while open.
                 if (android_panel_visible_ && event.button.button == SDL_BUTTON_LEFT) {
                     int mx = event.button.x, my = event.button.y;
                     auto in = [&](const BtnRect& r) {
                         return r.w > 0 && in_rect(mx, my, r.x, r.y, r.w, r.h);
                     };
-                    // When the help overlay is showing, only clicks that
-                    // actually land on it are intercepted. Clicks outside
-                    // the help panel fall through so the title-bar buttons
-                    // (close, menu, log toggle) keep working.
-                    if (android_help_visible_) {
-                        if (in(android_help_close_btn_) || in(android_help_btn_)) {
-                            android_help_visible_ = false;
-                            break;
-                        }
-                        // Scrollbar thumb drag — page-up/down on track.
-                        if (android_help_thumb_rect_.w > 0 && in(android_help_thumb_rect_)) {
-                            android_help_dragging_ = true;
-                            android_help_drag_offset_ = my - android_help_thumb_rect_.y;
-                            break;
-                        }
-                        if (android_help_track_rect_.w > 0 && in(android_help_track_rect_)) {
-                            int page = std::max(40, frame_dst_w_ / 5);
-                            if (my < android_help_thumb_rect_.y)
-                                android_help_scroll_ = std::max(0, android_help_scroll_ - page);
-                            else
-                                android_help_scroll_ = std::min(android_help_max_scroll_,
-                                                                android_help_scroll_ + page);
-                            break;
-                        }
-                        // Click inside the help panel but on neutral area:
-                        // swallow so it doesn't pick a discovered device
-                        // underneath. Clicks outside the panel fall through.
-                        if (in(android_help_panel_rect_)) break;
-                        // Click outside the help — dismiss it and let the
-                        // event continue so e.g. the title-bar close button
-                        // can still receive it.
-                        android_help_visible_ = false;
-                    }
                     if (android_qr_active_.load()) {
                         if (in(android_qr_cancel_btn_)) { android_qr_stop(); break; }
                         // Clicks inside the QR panel are swallowed; a click
@@ -1787,8 +1802,8 @@ void Renderer::run() {
                         break;
                     }
                     if (in(android_help_btn_)) {
-                        android_help_visible_ = !android_help_visible_;
-                        if (android_help_visible_) android_help_scroll_ = 0;
+                        setup_guide_visible_ = true;
+                        setup_guide_auto_ = false;
                         break;
                     }
                     if (in(android_connect_btn_) && !android_busy_) {
@@ -2414,6 +2429,10 @@ void Renderer::run() {
                                 mcp_copied_at_ = std::chrono::steady_clock::now();
                             }
 #endif
+                            if (hit(settings_toggle_mutephone_btn_)) {
+                                settings_.android_mute_phone = !settings_.android_mute_phone;
+                                settings_.save();
+                            }
                             if (hit(settings_toggle_usb_btn_)) {
                                 settings_.android_auto_usb = !settings_.android_auto_usb;
                                 settings_.save();
@@ -2758,17 +2777,7 @@ void Renderer::run() {
                     android_send_touch_(2, event.motion.x, event.motion.y);
                     break;
                 }
-                if (android_help_dragging_ && android_help_track_rect_.h > 0 &&
-                    android_help_thumb_rect_.h > 0 && android_help_max_scroll_ > 0) {
-                    int my = event.motion.y;
-                    int track_y = android_help_track_rect_.y;
-                    int track_h = android_help_track_rect_.h;
-                    int thumb_h = android_help_thumb_rect_.h;
-                    float frac = (float)(my - android_help_drag_offset_ - track_y) /
-                                 (float)std::max(1, track_h - thumb_h);
-                    frac = std::max(0.0f, std::min(1.0f, frac));
-                    android_help_scroll_ = (int)(frac * android_help_max_scroll_);
-                } else if (log_scrollbar_dragging_ && log_sb_track_h_ > 0 && log_sb_max_scroll_ > 0) {
+                if (log_scrollbar_dragging_ && log_sb_track_h_ > 0 && log_sb_max_scroll_ > 0) {
                     int my = event.motion.y;
                     float frac = (float)(my - log_sb_track_y_ - log_sb_thumb_h_ / 2) /
                                  (float)(log_sb_track_h_ - log_sb_thumb_h_);
@@ -2837,7 +2846,6 @@ void Renderer::run() {
                     if (resizing_) resizing_ = false;
                     if (log_scrollbar_dragging_) log_scrollbar_dragging_ = false;
                     if (version_scrollbar_dragging_) version_scrollbar_dragging_ = false;
-                    if (android_help_dragging_) android_help_dragging_ = false;
                 }
                 break;
 
@@ -2861,13 +2869,7 @@ void Renderer::run() {
                         break;
                     }
                 }
-                if (android_panel_visible_ && android_help_visible_) {
-                    int scroll_amount = std::max(20, frame_dst_w_ / 18);
-                    android_help_scroll_ -= event.wheel.y * scroll_amount;
-                    if (android_help_scroll_ < 0) android_help_scroll_ = 0;
-                    if (android_help_scroll_ > android_help_max_scroll_)
-                        android_help_scroll_ = android_help_max_scroll_;
-                } else if (version_panel_visible_) {
+                if (version_panel_visible_) {
                     int scroll_amount = std::max(8, frame_dst_w_ / 30);
                     version_scroll_offset_ -= event.wheel.y * scroll_amount;
                 } else if (log_panel_visible_) {
@@ -2938,6 +2940,39 @@ void Renderer::run() {
 }
 
 void Renderer::render_frame() {
+    // Work handed over from other threads.
+    {
+        std::string toast, clip;
+        bool has_clip = false;
+        {
+            std::lock_guard lk(async_mutex_);
+            toast.swap(async_toast_);
+            if (async_clip_set_) { clip.swap(async_clip_); has_clip = true; async_clip_set_ = false; }
+        }
+        if (!toast.empty()) {
+            toast_text_ = toast;
+            toast_active_ = true;
+            toast_start_ = std::chrono::steady_clock::now();
+        }
+        if (has_clip && !clip.empty() && clip != last_synced_clip_) {
+            last_synced_clip_ = clip;
+            SDL_SetClipboardText(clip.c_str());
+        }
+        // A phone plugged in that needs a step opens the guide on the right
+        // brand; it closes again once the phone is usable.
+        int hint = setup_hint_.load();
+        if (hint != setup_hint_seen_) {
+            if (hint != 0) {
+                setup_guide_tab_ = setup_brand_.load() == 0 ? 3 : setup_brand_.load() - 1;
+                setup_guide_visible_ = true;
+                setup_guide_auto_ = true;
+            } else if (setup_guide_auto_) {
+                setup_guide_visible_ = false;
+                setup_guide_auto_ = false;
+            }
+            setup_hint_seen_ = hint;
+        }
+    }
     // 1. Update texture from pending frame
     {
         std::lock_guard lock(frame_mutex_);
@@ -3548,7 +3583,7 @@ void Renderer::render_frame() {
     if (version_panel_visible_ || version_panel_animating_) draw_version_panel();
     if (settings_panel_visible_ || settings_panel_animating_) draw_settings_panel();
     if (android_panel_visible_ || android_panel_animating_) draw_android_panel();
-    if (android_panel_visible_ && android_help_visible_) draw_android_help();
+    if (setup_guide_visible_) draw_setup_guide_();
 
     // Island bar (behind frame — slides behind bezel)
     if (island_anim_ > 0.01f) draw_island();
@@ -4447,7 +4482,7 @@ bool Renderer::tooltip_ready(const std::string& key) {
     }
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - hover_start_).count();
-    return elapsed >= 1000;
+    return elapsed >= 300;
 }
 
 #ifdef _WIN32
@@ -5743,6 +5778,179 @@ void Renderer::ui_pill_(const BtnRect& r, const char* label, wchar_t icon, bool 
                   r.y + r.h / 2, 0, 600);
 }
 
+// Cable setup guide: what to switch on so a plugged-in phone can be
+// mirrored. Opens by itself when the USB watch sees a phone adb cannot use
+// yet, and from the "?" in the Add Android panel. Steps come from the
+// vendors' / Android's own help pages (see the 3.5.0 design doc).
+void Renderer::draw_setup_guide_() {
+    if (frame_dst_w_ == 0) return;
+    float scale = (float)frame_dst_w_ / phone_frame_.frame_width();
+    int svx = frame_dst_x_ + (int)(phone_frame_.screen_x() * scale);
+    int svy = frame_dst_y_ + (int)(phone_frame_.screen_y() * scale);
+    int svw = (int)(phone_frame_.screen_width() * scale);
+
+    int uw = ui_ref_width();
+    int pad     = std::max(12, uw / 16);
+    int gap     = std::max(8,  pad * 2 / 3);
+    int title_h = std::max(15, uw / 20);
+    int label_h = std::max(11, uw / 30);
+    int note_h  = std::max(10, label_h * 4 / 5);
+    int row_pad = std::max(8,  label_h * 3 / 4);
+    int tabs_h  = label_h + row_pad * 2 - 2;
+    int line_h  = label_h * 135 / 100;
+    int panel_w = (std::min)((int)(svw * 0.9f), (int)(uw * 1.7f));
+    int panel_x = svx + (svw - panel_w) / 2;
+    int btn_sz  = std::max(20, uw / 14);
+    int ipad    = btn_sz / 3;
+    int panel_y = svy + ipad + btn_sz + ipad * 2 + pad / 2;
+    int inner   = std::max(10, pad * 3 / 4);
+    int pr      = std::max(14, pad);
+    const uint8_t alpha = 255;
+
+    static const char* const kTabs[4] = {"Samsung", "Xiaomi", "OPPO", "Other"};
+    static const std::vector<std::vector<std::string>> kSteps = {
+        {"Settings > About phone > Software information",
+         "Tap Build number 7 times, then enter your PIN",
+         "Settings > Developer options > USB debugging: On"},
+        {"Settings > About phone",
+         "Tap OS version 7 times",
+         "Settings > Additional settings > Developer options",
+         "Turn on USB debugging and USB debugging (Security settings), then restart the phone"},
+        {"Settings > About device > Version",
+         "Tap Build number 7 times",
+         "Settings > Additional settings > Developer options > USB debugging: On"},
+        {"Settings > About phone",
+         "Tap Build number 7 times",
+         "Settings > System > Developer options > USB debugging: On"},
+    };
+    const int hint = setup_hint_.load();
+    const char* status =
+        hint == 1 ? "Phone found. Turn on USB debugging:" :
+        hint == 2 ? "Unlock the phone and tap Allow (tick Always allow)." :
+        hint == 3 ? "iPhone needs no cable: Control Center > Screen Mirroring > PhoneMimi." :
+                    "Turn on USB debugging, then plug in the cable.";
+    const bool show_steps = hint == 0 || hint == 1;
+    setup_guide_tab_ = std::clamp(setup_guide_tab_, 0, 3);
+
+    // Greedy word wrap with the real font metrics.
+    auto wrap = [&](const std::string& text, int px, int maxw, int weight) {
+        std::vector<std::string> lines;
+        std::string cur, word;
+        auto fits = [&](const std::string& t) {
+            int w = 0, h = 0;
+            measure_text_c(sdl_renderer_, t, px, &w, &h, weight);
+            return w <= maxw;
+        };
+        size_t i = 0;
+        while (i <= text.size()) {
+            size_t sp = text.find(' ', i);
+            if (sp == std::string::npos) sp = text.size();
+            word = text.substr(i, sp - i);
+            std::string cand = cur.empty() ? word : cur + " " + word;
+            if (!cur.empty() && !fits(cand)) { lines.push_back(cur); cur = word; }
+            else cur = cand;
+            i = sp + 1;
+        }
+        if (!cur.empty()) lines.push_back(cur);
+        return lines;
+    };
+
+    const int content_w = panel_w - pad * 2;
+    const int num_d = label_h + 8;
+    const int step_text_w = content_w - inner * 2 - num_d - gap;
+    auto status_lines = wrap(status, label_h, content_w, hint == 2 ? 700 : 500);
+    std::vector<std::vector<std::string>> step_lines;
+    int card_h = 0;
+    if (show_steps) {
+        for (auto& st : kSteps[setup_guide_tab_]) {
+            step_lines.push_back(wrap(st, label_h, step_text_w, 500));
+            card_h += std::max(num_d, (int)step_lines.back().size() * line_h) + row_pad * 2;
+        }
+    }
+    int total_h = pad + title_h + gap + (int)status_lines.size() * line_h + gap +
+                  (show_steps ? tabs_h + gap + card_h + gap + note_h : 0) + pad;
+    setup_guide_rect_ = {panel_x, panel_y, panel_w, total_h};
+
+    int mx, my;
+    SDL_GetMouseState(&mx, &my);
+    const Accent& ac = accent_for(settings_.accent_color);
+    auto surface = [&](int x, int y, int w, int h, int rad, uint8_t r, uint8_t g, uint8_t b) {
+        SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_NONE);
+        SDL_SetRenderDrawColor(sdl_renderer_, r, g, b, 255);
+        fill_round_rect(sdl_renderer_, x, y, w, h, rad);
+    };
+
+    ui_shell_(panel_x, panel_y, panel_w, total_h, pr);
+    int cy = panel_y + pad;
+
+    // Header: accent tile, title, close.
+    {
+        int tile = title_h + 10, mid = cy + title_h / 2;
+        SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(sdl_renderer_, ac.r, ac.g, ac.b, 42);
+        fill_round_rect(sdl_renderer_, panel_x + pad, mid - tile / 2, tile, tile, tile / 3);
+        draw_glyph(sdl_renderer_, lucide::Usb, panel_x + pad + tile / 2, mid, tile / 2,
+                   ac.lr, ac.lg, ac.lb, alpha);
+        int sz = title_h + 8;
+        setup_guide_close_btn_ = {panel_x + panel_w - pad - sz, mid - sz / 2, sz, sz};
+        int title_x = panel_x + pad + tile + tile / 3;
+        const char* title = "Connect with a cable";
+        draw_text_mid(sdl_renderer_, title,
+                      fit_text_px(sdl_renderer_, title, title_h, setup_guide_close_btn_.x - 6 - title_x, 700),
+                      244, 246, 248, alpha, title_x, mid, 0, 700);
+        ui_round_btn_(setup_guide_close_btn_, lucide::X,
+                      in_rect(mx, my, setup_guide_close_btn_.x, setup_guide_close_btn_.y, sz, sz));
+    }
+    cy += title_h + gap;
+
+    for (auto& l : status_lines) {
+        if (hint == 2)
+            draw_text_mid(sdl_renderer_, l, label_h, ac.lr, ac.lg, ac.lb, alpha, panel_x + pad, cy + line_h / 2, 0, 700);
+        else
+            draw_text_mid(sdl_renderer_, l, label_h, 230, 234, 240, alpha, panel_x + pad, cy + line_h / 2, 0, 500);
+        cy += line_h;
+    }
+    cy += gap;
+
+    for (auto& b : setup_guide_tab_btns_) b = {};
+    if (!show_steps) return;
+
+    ui_segment_(panel_x + pad, cy, content_w, tabs_h, kTabs, 4, setup_guide_tab_,
+                "guide.tabs", setup_guide_tab_btns_, label_h, alpha);
+    cy += tabs_h + gap;
+
+    // Recessed card with numbered steps.
+    const int card_r = std::max(10, pr * 3 / 4);
+    surface(panel_x + pad - 1, cy - 1, content_w + 2, card_h + 2, card_r + 1, 30, 33, 40);
+    surface(panel_x + pad, cy, content_w, card_h, card_r, 17, 19, 24);
+    for (size_t k = 0; k < step_lines.size(); ++k) {
+        int rh = std::max(num_d, (int)step_lines[k].size() * line_h) + row_pad * 2;
+        int ncx = panel_x + pad + inner + num_d / 2, ncy = cy + row_pad + num_d / 2;
+        SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(sdl_renderer_, ac.r, ac.g, ac.b, 255);
+        fill_circle(sdl_renderer_, ncx, ncy, num_d / 2);
+        uint8_t ink = ac.dark_ink ? 14 : 255;
+        draw_text_mid(sdl_renderer_, std::to_string(k + 1), label_h * 9 / 10, ink, ink, ink, alpha,
+                      ncx, ncy, 1, 700);
+        int tx = panel_x + pad + inner + num_d + gap;
+        int ty = cy + row_pad + (step_lines[k].size() == 1 ? (num_d - line_h) / 2 : 0);
+        for (auto& l : step_lines[k]) {
+            draw_text_mid(sdl_renderer_, l, label_h, 230, 234, 240, alpha, tx, ty + line_h / 2, 0, 500);
+            ty += line_h;
+        }
+        cy += rh;
+        if (k + 1 < step_lines.size()) {
+            SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_NONE);
+            SDL_SetRenderDrawColor(sdl_renderer_, 30, 33, 40, 255);
+            SDL_RenderDrawLine(sdl_renderer_, tx, cy, panel_x + pad + content_w - inner, cy);
+        }
+    }
+    cy += gap;
+    draw_text_mid(sdl_renderer_, "Then plug in the cable and tap Allow on the phone.",
+                  fit_text_px(sdl_renderer_, "Then plug in the cable and tap Allow on the phone.", note_h, content_w, 500),
+                  150, 154, 162, alpha, panel_x + pad, cy + note_h / 2, 0, 500);
+}
+
 void Renderer::draw_settings_panel() {
     if (frame_dst_w_ == 0) return;
 
@@ -5791,9 +5999,9 @@ void Renderer::draw_settings_panel() {
     const int tab = settings_tab_;
     const bool resize_on = settings_.screenshot_resize_enabled;
 #ifdef ENABLE_MCP
-    const int phone_rows = settings_.mcp_enabled ? 10 : 9;
+    const int phone_rows = settings_.mcp_enabled ? 11 : 10;
 #else
-    const int phone_rows = 8;
+    const int phone_rows = 9;
 #endif
     const int rows = tab == 0 ? 4 : tab == 1 ? phone_rows : tab == 2 ? (resize_on ? 7 : 5) : 2;
     int total_h = pad + title_h + gap + tabs_h + gap + rows * row_h
@@ -5817,6 +6025,7 @@ void Renderer::draw_settings_panel() {
     settings_toggle_usb_btn_ = settings_toggle_softkbd_btn_ = {};
     settings_toggle_kbd_btn_ = settings_toggle_scroff_btn_ = settings_toggle_paste_btn_ = {};
     settings_toggle_mcp_btn_ = settings_mcp_copy_btn_ = {};
+    settings_toggle_mutephone_btn_ = {};
     for (auto& b : settings_seg_res_btns_) b = {};
     for (auto& b : settings_seg_fps_btns_) b = {};
     for (auto& b : settings_seg_ios_fps_btns_) b = {};
@@ -5967,6 +6176,7 @@ void Renderer::draw_settings_panel() {
         settings_toggle_paste_btn_   = toggle("Type by pasting", settings_.android_type_via_paste);
         settings_toggle_softkbd_btn_ = toggle("Hide the phone keyboard", settings_.android_hide_soft_keyboard);
         settings_toggle_scroff_btn_  = toggle("Phone screen off", settings_.android_screen_off);
+        settings_toggle_mutephone_btn_ = toggle("Mute phone speaker", settings_.android_mute_phone);
         static const char* const res_opts[3] = {"Max", "1920", "1280"};
         static const int res_vals[3] = {0, 1920, 1280};
         segment("Resolution", res_opts, 3,
@@ -6541,7 +6751,6 @@ void Renderer::show_android_panel() {
     android_panel_visible_ = true;
     android_panel_animating_ = true;
     android_panel_anim_start_ = std::chrono::steady_clock::now();
-    android_help_visible_ = false;
     // Pair port and PIN are single-use; the phone shows fresh values every
     // time the Wireless debugging → Pair dialog is opened. Always clear
     // them so the user can't paste in stale values from the last session.
@@ -7724,259 +7933,6 @@ void Renderer::draw_android_panel() {
         bool dh_ = hov(android_disconnect_btn_);
         draw_text_mid(sdl_renderer_, "Disconnect", label_h, dh_ ? 255 : 138, dh_ ? 138 : 148,
                       dh_ ? 143 : 166, text_alpha, panel_x + panel_w / 2, cy + disc_h / 2, 1, 600);
-    }
-}
-
-void Renderer::draw_android_help() {
-    if (frame_dst_w_ == 0) return;
-
-    // Help overlay floats on top of the connect panel. Anchored inside the
-    // phone screen rectangle so it stays inside the device frame.
-    float scale = (float)frame_dst_w_ / phone_frame_.frame_width();
-    int svx = frame_dst_x_ + (int)(phone_frame_.screen_x() * scale);
-    int svy = frame_dst_y_ + (int)(phone_frame_.screen_y() * scale);
-    int svw = (int)(phone_frame_.screen_width() * scale);
-    int svh = (int)(phone_frame_.screen_height() * scale);
-
-    // Cap panel width using ui_ref_width() so the help overlay stays the
-    // same neat size when mirroring a tablet/desktop source.
-    int uw = ui_ref_width();
-    int panel_w = std::min((int)(svw * 0.92f), (int)(uw * 1.6f));
-    int pad     = std::max(10, panel_w / 24);
-    int title_h = std::max(18, panel_w / 18);
-    int line_h  = std::max(13, panel_w / 28);
-    int line_gap = std::max(2, line_h / 6);   // space between wrapped lines
-    int para_gap = std::max(6, line_h / 2);   // space between paragraphs
-    int head_gap = std::max(8, line_h * 2 / 3); // extra above headings
-
-    // Paragraph model: every entry is either a heading, a gap, or a text
-    // paragraph with an optional inline prefix (e.g. "1." or "*"). Text
-    // paragraphs are word-wrapped to body width and continuation lines
-    // are hang-indented past the prefix.
-    enum class Kind { HEADING, TEXT, GAP };
-    struct Para { Kind kind; std::string prefix; std::string text; };
-    static const Para paragraphs[] = {
-        {Kind::HEADING, "", "How to set up your Android phone"},
-        {Kind::TEXT,    "1.", "Open Settings on the phone."},
-        {Kind::TEXT,    "2.", "Tap 'About phone' / 'Software information'."},
-        {Kind::TEXT,    "3.", "Tap 'Build number' seven times to enable Developer options."},
-        {Kind::TEXT,    "4.", "Back in Settings open 'Developer options' and turn on 'Wireless debugging' (the phone must be on the same Wi-Fi as the PC)."},
-
-        {Kind::HEADING, "", "Auto-discovery (recommended)"},
-        {Kind::TEXT,    "", "This panel scans the network for phones with Wireless debugging on. Discovered phones appear in the 'Discovered devices' list at the top."},
-        {Kind::TEXT,    "", "Tip: if your phone is not showing up, toggle Wireless debugging off and on again on the phone. It will then re-advertise its service and pop up in the list within a second."},
-        {Kind::TEXT,    "", "Click a discovered device to fill in IP address and Connect port automatically. Then open 'Pair device with pairing code' on the phone, type the Pair port and 6-digit Pairing code shown there, and press Connect."},
-
-        {Kind::HEADING, "", "QR code (no typing)"},
-        {Kind::TEXT,    "", "Press 'QR code', then on the phone open Wireless debugging > 'Pair device with QR code' and scan the code shown here. The phone pairs and connects by itself."},
-
-        {Kind::HEADING, "", "USB cable"},
-        {Kind::TEXT,    "", "Turn on 'USB debugging' in Developer options, plug the phone in, press 'USB cable' and allow 'USB debugging' on the phone the first time. No Wi-Fi needed."},
-
-        {Kind::HEADING, "", "Reading the values manually"},
-        {Kind::TEXT,    "*", "IP address: First part of 'IP address & Port' on the main Wireless debugging screen (e.g. 192.168.10.73)."},
-        {Kind::TEXT,    "*", "Connect port: Second part of the same line (e.g. :46029). Stable until you toggle Wi-Fi. Recommended."},
-        {Kind::TEXT,    "*", "Pair port: Second part of 'IP address & Port' inside the 'Pair device with pairing code' popup. This port is one-shot - reopen the popup if it expires."},
-        {Kind::TEXT,    "*", "Pairing code: The 6-digit number in the same popup."},
-
-        {Kind::HEADING, "", "Multiple phones"},
-        {Kind::TEXT,    "", "You can keep several Android phones connected at once. Each gets its own dot in the bottom row - left-click to switch which phone is on screen, right-click for a per-device disconnect menu."},
-
-        {Kind::HEADING, "", "Note for managed devices"},
-        {Kind::TEXT,    "", "Developer options can be blocked by your organisation through MDM (Intune, Workspace ONE, etc.). If 'Build number' refuses to enable developer mode, your work profile is locked down and Wireless debugging cannot be used on this device."},
-    };
-    int n_paras = (int)(sizeof(paragraphs) / sizeof(paragraphs[0]));
-
-    // --- layout pass: word-wrap every paragraph to the available width ---
-    int sb_w   = std::max(3, pad / 4);
-    int sb_gap = std::max(4, sb_w);
-    int body_w = panel_w - pad * 2 - (sb_w + sb_gap);
-
-    struct LineOut { std::string text; int x_offset; int h; bool heading; };
-    std::vector<LineOut> rendered;
-    std::vector<int> gap_after; // extra px after each rendered line
-
-    int space_w = measure_text_w(" ", line_h);
-
-    auto wrap = [&](const std::string& s, int h, int max_w) {
-        std::vector<std::string> out;
-        if (s.empty()) { out.push_back(""); return out; }
-        // Tokenise on spaces, keeping word boundaries.
-        std::vector<std::string> words;
-        std::string cur;
-        for (char c : s) {
-            if (c == ' ') { if (!cur.empty()) { words.push_back(cur); cur.clear(); } }
-            else cur += c;
-        }
-        if (!cur.empty()) words.push_back(cur);
-        std::string line;
-        for (auto& w : words) {
-            std::string trial = line.empty() ? w : line + " " + w;
-            if (measure_text_w(trial, h) <= max_w || line.empty()) {
-                line = trial;
-            } else {
-                out.push_back(line);
-                line = w;
-            }
-        }
-        if (!line.empty()) out.push_back(line);
-        return out;
-    };
-
-    for (int i = 0; i < n_paras; ++i) {
-        const Para& p = paragraphs[i];
-        if (p.kind == Kind::GAP) {
-            // (no GAP paragraphs in current data, kept for completeness)
-            if (!rendered.empty()) gap_after.back() += para_gap;
-            continue;
-        }
-        // Inter-paragraph spacing: small gap before normal text, larger
-        // gap before a heading. Skip the leading paragraph.
-        if (!rendered.empty()) {
-            gap_after.back() += (p.kind == Kind::HEADING) ? head_gap : para_gap;
-        }
-        if (p.kind == Kind::HEADING) {
-            rendered.push_back({p.text, 0, title_h, true});
-            gap_after.push_back(0);
-            continue;
-        }
-        // TEXT
-        int prefix_w = 0;
-        if (!p.prefix.empty()) prefix_w = measure_text_w(p.prefix, line_h) + space_w;
-        int avail = std::max(40, body_w - prefix_w);
-        auto lines = wrap(p.text, line_h, avail);
-        for (size_t j = 0; j < lines.size(); ++j) {
-            std::string txt;
-            int xoff;
-            if (j == 0 && !p.prefix.empty()) {
-                txt = p.prefix + " " + lines[j];
-                xoff = 0;
-            } else {
-                txt = lines[j];
-                xoff = prefix_w;
-            }
-            rendered.push_back({txt, xoff, line_h, false});
-            gap_after.push_back(line_gap);
-        }
-    }
-
-    // Total content height.
-    int content_h = 0;
-    for (size_t i = 0; i < rendered.size(); ++i)
-        content_h += rendered[i].h + gap_after[i];
-
-    // Breathing margin above/below the help overlay so it doesn't slam
-    // into the phone's bezel curve.
-    int breath = std::max(svh / 14, 24);
-    int max_panel_h = svh - breath * 2;
-    int wanted_h = pad * 2 + content_h;
-    int total_h = std::min(wanted_h, max_panel_h);
-    if (total_h < title_h * 4) total_h = std::min(max_panel_h, title_h * 4);
-
-    int panel_x = svx + (svw - panel_w) / 2;
-    int panel_y = svy + (svh - total_h) / 2;
-
-    android_help_panel_rect_ = {panel_x, panel_y, panel_w, total_h};
-
-    uint8_t alpha = 250;
-    uint8_t text_alpha = 255;
-
-    int pr = std::max(8, pad / 2);
-    SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_NONE);
-    SDL_SetRenderDrawColor(sdl_renderer_, 30, 30, 34, alpha);
-    SDL_Rect bgbody = {panel_x + pr, panel_y, panel_w - pr*2, total_h};
-    SDL_RenderFillRect(sdl_renderer_, &bgbody);
-    SDL_Rect ls = {panel_x, panel_y + pr, pr, total_h - pr*2};
-    SDL_RenderFillRect(sdl_renderer_, &ls);
-    SDL_Rect rs = {panel_x + panel_w - pr, panel_y + pr, pr, total_h - pr*2};
-    SDL_RenderFillRect(sdl_renderer_, &rs);
-    fill_circle(sdl_renderer_, panel_x + pr, panel_y + pr, pr);
-    fill_circle(sdl_renderer_, panel_x + panel_w - pr, panel_y + pr, pr);
-    fill_circle(sdl_renderer_, panel_x + pr, panel_y + total_h - pr, pr);
-    fill_circle(sdl_renderer_, panel_x + panel_w - pr, panel_y + total_h - pr, pr);
-    SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
-
-    // Close button (× in the top-right corner).
-    {
-        int sz = title_h;
-        android_help_close_btn_ = {panel_x + panel_w - sz - pad/2,
-                                   panel_y + pad/2, sz, sz};
-        int tw=0, th=0;
-        SDL_Texture* tex = make_text_texture(sdl_renderer_, "x", sz,
-                                             200, 200, 200, &tw, &th);
-        if (tex) {
-            SDL_Rect d = {android_help_close_btn_.x + (sz-tw)/2,
-                          android_help_close_btn_.y + (sz-th)/2, tw, th};
-            SDL_SetTextureAlphaMod(tex, text_alpha);
-            SDL_RenderCopy(sdl_renderer_, tex, nullptr, &d);
-            SDL_DestroyTexture(tex);
-        }
-    }
-
-    int body_x = panel_x + pad;
-    int body_y = panel_y + pad;
-    int body_h = total_h - pad * 2;
-
-    android_help_max_scroll_ = std::max(0, content_h - body_h);
-    if (android_help_scroll_ > android_help_max_scroll_)
-        android_help_scroll_ = android_help_max_scroll_;
-    if (android_help_scroll_ < 0) android_help_scroll_ = 0;
-
-    SDL_Rect clip = {body_x, body_y, body_w, body_h};
-    SDL_Rect prev_clip;
-    SDL_bool was_clip = SDL_RenderIsClipEnabled(sdl_renderer_);
-    if (was_clip) SDL_RenderGetClipRect(sdl_renderer_, &prev_clip);
-    SDL_RenderSetClipRect(sdl_renderer_, &clip);
-
-    int cy = body_y - android_help_scroll_;
-    for (size_t i = 0; i < rendered.size(); ++i) {
-        const auto& r = rendered[i];
-        int step = r.h + gap_after[i];
-        if (cy + r.h < body_y) { cy += step; continue; }
-        if (cy > body_y + body_h) break;
-        if (!r.text.empty()) {
-            uint8_t cr = r.heading ? 230 : 195;
-            uint8_t cg = r.heading ? 230 : 200;
-            uint8_t cb = r.heading ? 245 : 210;
-            int tw = 0, th = 0;
-            SDL_Texture* tex = make_text_texture(sdl_renderer_, r.text, r.h,
-                                                 cr, cg, cb, &tw, &th);
-            if (tex) {
-                SDL_Rect d = {body_x + r.x_offset, cy, tw, th};
-                SDL_SetTextureAlphaMod(tex, text_alpha);
-                SDL_RenderCopy(sdl_renderer_, tex, nullptr, &d);
-                SDL_DestroyTexture(tex);
-            }
-        }
-        cy += step;
-    }
-
-    if (was_clip) SDL_RenderSetClipRect(sdl_renderer_, &prev_clip);
-    else          SDL_RenderSetClipRect(sdl_renderer_, nullptr);
-
-    // Scrollbar — only when content actually overflows. Matches the
-    // version panel: a single thumb (no track) tucked inside the rounded
-    // corner radius.
-    if (android_help_max_scroll_ > 0) {
-        int track_x = panel_x + panel_w - sb_w - pr;
-        int track_y = panel_y + pr;
-        int track_h = total_h - pr * 2;
-        android_help_track_rect_ = {track_x, track_y, sb_w, track_h};
-        int thumb_h = std::max(pr * 2, (int)((float)track_h * body_h /
-                                              (float)content_h));
-        thumb_h = std::min(thumb_h, track_h);
-        int max_top = track_h - thumb_h;
-        int thumb_y = track_y + (max_top > 0
-            ? (int)((float)android_help_scroll_ / android_help_max_scroll_ * max_top)
-            : 0);
-        android_help_thumb_rect_ = {track_x, thumb_y, sb_w, thumb_h};
-        uint8_t a = android_help_dragging_ ? 220 : 180;
-        SDL_SetRenderDrawColor(sdl_renderer_, 80, 80, 90, a);
-        SDL_Rect thr = {track_x, thumb_y, sb_w, thumb_h};
-        SDL_RenderFillRect(sdl_renderer_, &thr);
-    } else {
-        android_help_track_rect_ = {0, 0, 0, 0};
-        android_help_thumb_rect_ = {0, 0, 0, 0};
     }
 }
 

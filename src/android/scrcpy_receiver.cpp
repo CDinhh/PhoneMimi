@@ -15,6 +15,7 @@
 #ifdef ENABLE_ANDROID
 
 #include <opm/android/scrcpy_receiver.h>
+#include <opm/android/scrcpy_util.h>
 
 #include <array>
 #include <cstdint>
@@ -299,7 +300,7 @@ bool AdbController::kill_server() {
     return run_({"kill-server"}, {}, nullptr) == 0;
 }
 
-std::vector<DeviceInfo> AdbController::list_devices(int timeout_ms) {
+std::vector<DeviceInfo> AdbController::list_devices(int timeout_ms, bool keep_unauthorized) {
     std::vector<DeviceInfo> result;
     std::string out;
     int rc = timeout_ms > 0 ? spawn_capture(adb_path_, {"devices", "-l"}, {}, &out, timeout_ms, &cancel_)
@@ -316,7 +317,7 @@ std::vector<DeviceInfo> AdbController::list_devices(int timeout_ms) {
         ls >> d.serial >> d.state;
         if (d.serial.empty()) continue;
         if (d.state == "offline" ||
-            d.state.find("unauthorized") != std::string::npos) continue;
+            (!keep_unauthorized && d.state.find("unauthorized") != std::string::npos)) continue;
         auto mp = line.find("model:");
         if (mp != std::string::npos) {
             auto ep = line.find(' ', mp);
@@ -450,7 +451,8 @@ bool ScrcpyReceiver::start(const Config& cfg, AdbController& adb) {
         std::string("CLASSPATH=/data/local/tmp/scrcpy-server.jar ") +
         "app_process / com.genymobile.scrcpy.Server " + cfg.scrcpy_version +
         " video_codec=h264" +
-        " audio=false" +
+        (cfg.audio ? std::string(" audio=true audio_codec=raw") + (cfg.audio_dup ? " audio_dup=true" : "")
+                   : std::string(" audio=false")) +
         (cfg.control ? " control=true" : " control=false") +
         " max_size=" + std::to_string(cfg.max_size) +
         " video_bit_rate=" + std::to_string(cfg.bit_rate) +
@@ -486,7 +488,16 @@ bool ScrcpyReceiver::start(const Config& cfg, AdbController& adb) {
         return false;
     }
     socket_t s = ::accept(listen_sock, nullptr, nullptr);
-    // With control=true the server opens a second connection (after video).
+    // The server connects video, then audio (if on), then control.
+    socket_t as = INVALID_SOCK;
+    if (s != INVALID_SOCK && cfg.audio) {
+        fd_set ra; FD_ZERO(&ra); FD_SET(listen_sock, &ra);
+        timeval tva{5, 0};
+        if (select((int)listen_sock + 1, &ra, nullptr, nullptr, &tva) > 0)
+            as = ::accept(listen_sock, nullptr, nullptr);
+        if (as == INVALID_SOCK)
+            std::cerr << "[scrcpy] audio channel did not connect; no sound\n";
+    }
     socket_t cs = INVALID_SOCK;
     if (s != INVALID_SOCK && cfg.control) {
         fd_set r2; FD_ZERO(&r2); FD_SET(listen_sock, &r2);
@@ -507,13 +518,23 @@ bool ScrcpyReceiver::start(const Config& cfg, AdbController& adb) {
         int nodelay = 1;
         setsockopt(cs, IPPROTO_TCP, TCP_NODELAY, (const char*)&nodelay, sizeof(nodelay));
         ctrl_sock_ = (uintptr_t)cs;
-        // The server may send clipboard / ack messages; read and drop them so
-        // its send buffer never fills up.
-        ctrl_drain_ = std::thread([cs] {
-            char buf[4096];
+        // Device messages: clipboard text goes to on_clipboard_, acks and
+        // UHID output are skipped. Always read so the server never blocks.
+        ctrl_drain_ = std::thread([this, cs] {
+            std::vector<uint8_t> pending;
+            uint8_t buf[4096];
+            bool parse = true;
             while (true) {
-                int n = ::recv(cs, buf, (int)sizeof(buf), 0);
+                int n = ::recv(cs, (char*)buf, (int)sizeof(buf), 0);
                 if (n <= 0) break;
+                if (!parse) continue;
+                pending.insert(pending.end(), buf, buf + n);
+                std::vector<std::string> clips;
+                size_t used = parse_device_messages(pending.data(), pending.size(), &clips);
+                if (used == SIZE_MAX) { parse = false; pending.clear(); continue; }
+                pending.erase(pending.begin(), pending.begin() + (std::ptrdiff_t)used);
+                if (on_clipboard_)
+                    for (auto& c : clips) on_clipboard_(c);
             }
         });
     }
@@ -523,7 +544,51 @@ bool ScrcpyReceiver::start(const Config& cfg, AdbController& adb) {
 
     running_.store(true);
     thread_ = std::thread([this] { worker_(); });
+    if (as != INVALID_SOCK) {
+        audio_sock_ = (uintptr_t)as;
+        audio_thread_ = std::thread([this] { audio_worker_(); });
+    }
     return true;
+}
+
+// Raw audio stream: u32 codec id, then packets of [u64 pts+flags][u32 size]
+// [s16le stereo 48 kHz PCM]. Resampled to the 44.1 kHz output device.
+void ScrcpyReceiver::audio_worker_() {
+    socket_t s = (socket_t)audio_sock_;
+    uint8_t hdr[12];
+    if (!read_exact(s, hdr, 4)) return;
+    uint32_t codec = be32(hdr);
+    if (codec == 0 || codec == 1) {   // 0: disabled by the device, 1: capture error
+        std::cerr << "[scrcpy] phone sound not available (Android 11+ needed)\n";
+        return;
+    }
+    std::cout << "[scrcpy] phone sound on\n";
+    PcmResampler48to441 rs;
+    std::vector<uint8_t> pcm;
+    std::vector<int16_t> out;
+    while (running_.load()) {
+        if (!read_exact(s, hdr, 12)) break;
+        uint64_t pts_flags = be64(hdr);
+        uint32_t size = be32(hdr + 8);
+        if (size > (1u << 20)) break;
+        pcm.resize(size);
+        if (size && !read_exact(s, pcm.data(), size)) break;
+        if (pts_flags >> 63) continue;   // config packet: nothing for raw PCM
+        size_t frames = size / 4;
+        std::vector<int16_t> in(frames * 2);
+        std::memcpy(in.data(), pcm.data(), frames * 4);
+        out.clear();
+        rs.feed(in.data(), frames, &out);
+        if (out.empty() || !on_audio_) continue;
+        media::AudioFrame f;
+        f.sample_rate = 44100;
+        f.channels = 2;
+        f.size = (int)(out.size() * 2);
+        f.data = std::make_unique<uint8_t[]>((size_t)f.size);
+        std::memcpy(f.data.get(), out.data(), (size_t)f.size);
+        f.pts = (int64_t)(pts_flags & ((1ull << 62) - 1));
+        on_audio_(std::move(f));
+    }
 }
 
 void ScrcpyReceiver::stop() {
@@ -538,6 +603,18 @@ void ScrcpyReceiver::stop() {
 #endif
     }
     if (was_running && thread_.joinable()) thread_.join();
+    if (audio_sock_ != (uintptr_t)INVALID_SOCK) {
+#ifdef _WIN32
+        shutdown((socket_t)audio_sock_, SD_BOTH);
+#else
+        shutdown((socket_t)audio_sock_, SHUT_RDWR);
+#endif
+    }
+    if (audio_thread_.joinable()) audio_thread_.join();
+    if (audio_sock_ != (uintptr_t)INVALID_SOCK) {
+        CLOSESOCK((socket_t)audio_sock_);
+        audio_sock_ = (uintptr_t)INVALID_SOCK;
+    }
 
     {
         std::lock_guard lk(ctrl_mutex_);

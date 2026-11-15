@@ -3,10 +3,13 @@
 #ifdef ENABLE_ANDROID
 
 #include <opm/app.h>
+#include <opm/android/setup_hint.h>
 #include <opm/settings.h>
 #include <opm/usage_log.h>
 
 #include <algorithm>
+#include <cctype>
+#include <cstdlib>
 #include <chrono>
 #include <iostream>
 #include <iterator>
@@ -51,6 +54,7 @@ static void apply_stream_settings(android::ScrcpyReceiver::Config& sc) {
     sc.bit_rate = s.android_bitrate_mbps * 1'000'000;
     sc.hide_soft_keyboard = s.android_hide_soft_keyboard;
     sc.screen_off = s.android_screen_off;
+    sc.audio_dup = !s.android_mute_phone;
 }
 
 void App::usb_watch_loop_() {
@@ -58,11 +62,31 @@ void App::usb_watch_loop_() {
     // once per plug-in, so disconnecting it by hand sticks until re-plug.
     std::set<std::string> seen;
     while (!usb_watch_stop_.load()) {
+        auto devs = adb_.list_devices(5000, /*keep_unauthorized=*/true);
+        std::set<std::string> attached;
+        bool unauthorized = false;
+        for (auto& d : devs) {
+            if (!is_usb_serial(d.serial)) continue;
+            if (d.state == "device") attached.insert(d.serial);
+            else if (d.state.find("unauthorized") != std::string::npos) unauthorized = true;
+        }
+        // Tell a cable user what is missing (USB debugging off, Allow not
+        // tapped, iPhone needs no cable).
+        {
+            auto st = android::decide_setup(android::usb_ids_present(), !attached.empty(), unauthorized);
+            bool mirroring = false;
+            {
+                std::lock_guard lk(scrcpy_mutex_);
+                mirroring = !scrcpy_sessions_.empty();
+            }
+            if ((st.hint == android::SetupHint::DebuggingOff && mirroring) ||
+                (st.hint == android::SetupHint::IPhoneCable &&
+                 active_source_.load() == static_cast<int>(Source::AirPlay)))
+                st = {};
+            renderer_.set_setup_state(static_cast<int>(st.hint), static_cast<int>(st.brand));
+        }
         // Re-read every round: the setting can be toggled while running.
         if (Settings::load().android_auto_usb) {
-            std::set<std::string> attached;
-            for (auto& d : adb_.list_devices())
-                if (is_usb_serial(d.serial) && d.state == "device") attached.insert(d.serial);
             for (auto it = seen.begin(); it != seen.end();)
                 it = attached.count(*it) ? std::next(it) : seen.erase(it);
 
@@ -133,6 +157,31 @@ bool App::start_android_session_(const std::string& serial,
         std::lock_guard lk(scrcpy_mutex_);
         sc.local_port = pick_local_port(scrcpy_sessions_);
     }
+    {
+        // Sound needs Android 11 (API 30); playing on both sides needs 13.
+        std::string out;
+        adb_.run({"-s", serial, "shell", "getprop", "ro.build.version.sdk"}, &out, 5000);
+        int sdk = std::atoi(out.c_str());
+        sc.audio = sdk >= 30;
+        if (sdk < 33) sc.audio_dup = false;
+    }
+    sess->receiver->set_audio_callback([this, captured](media::AudioFrame frame) {
+        bool is_active = false;
+        {
+            std::lock_guard lk(scrcpy_mutex_);
+            is_active = (active_android_serial_ == captured);
+        }
+        if (is_active && active_source_.load() == static_cast<int>(Source::Android))
+            audio_.submit(std::move(frame));
+    });
+    sess->receiver->set_clipboard_callback([this, captured](const std::string& text) {
+        bool is_active = false;
+        {
+            std::lock_guard lk(scrcpy_mutex_);
+            is_active = (active_android_serial_ == captured);
+        }
+        if (is_active) renderer_.set_clipboard_from_phone(text);
+    });
     if (!sess->receiver->start(sc, adb_)) {
         if (out_error) *out_error = "scrcpy start failed (see log).";
         return false;
@@ -401,8 +450,57 @@ void App::android_send_input(const media::Renderer::AndroidInput& in) {
         case Kind::Key:       rx->send_key(in.action, in.keycode); break;
         case Kind::Text:      rx->send_text(in.text); break;
         case Kind::Clipboard: rx->send_clipboard(in.text, /*paste=*/true); break;
+        case Kind::SetClipboard: rx->send_clipboard(in.text, /*paste=*/false); break;
         case Kind::ScreenPower: rx->send_display_power(in.action != 0); break;
     }
+}
+
+// Files dropped on the window: APKs are installed, anything else is copied
+// to the phone's Download folder. Runs on its own thread; results are toasts.
+void App::android_drop_files(std::vector<std::string> paths) {
+    std::string serial;
+    {
+        std::lock_guard lk(scrcpy_mutex_);
+        if (active_source_.load() == static_cast<int>(Source::Android)) serial = active_android_serial_;
+    }
+    if (serial.empty()) {
+        renderer_.post_toast("Drop files on an Android phone");
+        return;
+    }
+    std::thread([this, serial, paths = std::move(paths)] {
+        for (const auto& path : paths) {
+            std::string name = path.substr(path.find_last_of("\\/") + 1);
+            std::string lower = name;
+            for (auto& c : lower) c = (char)std::tolower((unsigned char)c);
+            bool apk = lower.size() > 4 && lower.compare(lower.size() - 4, 4, ".apk") == 0;
+            std::string out;
+            if (apk) {
+                renderer_.post_toast("Installing " + name + "...");
+                int rc = adb_.run({"-s", serial, "install", "-r", path}, &out, 180000);
+                if (rc == 0 && out.find("Success") != std::string::npos) {
+                    renderer_.post_toast("Installed " + name);
+                } else if (out.find("INSTALL_FAILED_USER_RESTRICTED") != std::string::npos) {
+                    renderer_.post_toast("Turn on Install via USB in Developer options");
+                } else {
+                    auto f = out.find("Failure [");
+                    std::string why = f != std::string::npos
+                        ? out.substr(f + 9, out.find(']', f) - f - 9)
+                        : (rc == -2 ? "timed out" : "see the log");
+                    std::cerr << "[Drop] install " << name << " failed: " << out << "\n";
+                    renderer_.post_toast("Could not install " + name + ": " + why);
+                }
+            } else {
+                renderer_.post_toast("Sending " + name + "...");
+                int rc = adb_.run({"-s", serial, "push", path, "/sdcard/Download/"}, &out, 600000);
+                if (rc == 0) {
+                    renderer_.post_toast("Saved to Download: " + name);
+                } else {
+                    std::cerr << "[Drop] push " << name << " failed: " << out << "\n";
+                    renderer_.post_toast("Could not send " + name);
+                }
+            }
+        }
+    }).detach();
 }
 
 std::string App::android_connect_wifi(const std::string& addr) {

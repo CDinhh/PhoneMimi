@@ -57,6 +57,8 @@ struct Settings {
     // MCP server for Claude Code (127.0.0.1 only). The token is made the
     // first time the switch is turned on.
     bool mcp_enabled = false;
+    // Phone sound plays on the PC and, by default, on the phone too.
+    bool android_mute_phone = false;
     int mcp_port = 47290;
     std::string mcp_token;
 

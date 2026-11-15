@@ -8,6 +8,9 @@ window. Nothing to install on the phone.
   Wi-Fi (pairing code or QR code). Control the phone from the PC: mouse =
   touch, wheel = scroll, type on the PC keyboard, paste with `Ctrl+V`,
   side buttons for volume and power, phone screen off while mirroring.
+  Phone sound plays on the PC (Android 11+), copy and paste works both
+  ways, and files dropped on the window are installed (APK) or saved to
+  the phone's Download folder.
 - **Capture**: screenshots (PNG, with annotation and OCR) and recordings
   (MP4 or GIF), framed like a phone.
 - **Webcam drawer**: show your camera next to the phone, in recordings too.
@@ -32,6 +35,9 @@ Builds are unsigned, so SmartScreen may ask you to confirm
 3. If PIN pairing is on, type the PIN shown on the PC.
 
 ### Android over USB
+Plug the phone in. If USB debugging is still off, PhoneMimi opens a short
+guide for Samsung, Xiaomi, OPPO and other phones.
+
 1. Phone: **Developer options > USB debugging** on.
 2. Plug the phone in and allow the PC on the phone. Mirroring starts by
    itself (Settings > Phone > Connect over USB automatically).
@@ -110,6 +116,7 @@ and an MSI.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **3.5.0** | 16.11.2026 | Phone sound on the PC (plays on both, or mute the phone in Settings), clipboard both ways, drop files to install APKs or send files, cable setup guide that opens when a phone is plugged in, faster tooltips. |
 | **3.4.3** | 16.11.2026 | Sharper mirrored video: the phone picture is no longer shrunk too far and stretched back, and the last step takes 4 samples per pixel. |
 | **3.4.2** | 15.11.2026 | Sharper phone frame edges and penguin logo when the window is small. |
 | **3.4.1** | 15.11.2026 | MCP: screenshots always show the latest screen, `connect_wifi` keeps a working phone, steadier `adb devices` and UI dumps. |
