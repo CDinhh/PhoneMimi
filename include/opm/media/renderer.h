@@ -262,7 +262,7 @@ private:
     int hover_btn_ = -1; // -1=none, 0=close, 1=screenshot, 2=folder, 3=icon, 4=info, 5=menu, 6=settings
 
     // Island visibility & animation
-    bool island_visible_ = true;
+    bool island_visible_ = false;   // the old button row; replaced by Settings
     float island_anim_ = 1.0f; // 0=hidden, 1=fully visible
     std::chrono::steady_clock::time_point island_anim_start_;
     bool island_animating_ = false;
@@ -876,6 +876,12 @@ private:
     BtnRect setup_guide_rect_, setup_guide_close_btn_, setup_guide_tab_btns_[4];
     void draw_setup_guide_();
     BtnRect settings_toggle_mutephone_btn_;
+    // Settings: quick actions (screenshot, record, folder, log, stats,
+    // webcam, quit), the phone row, and the Help tab.
+    BtnRect settings_action_btns_[7];
+    BtnRect settings_dev_add_btn_, settings_dev_disc_btn_;
+    std::string settings_dev_id_;
+    BtnRect settings_help_guide_btn_, settings_help_ver_btn_, settings_help_about_btn_;
     std::mutex mcp_status_mutex_;
     std::string mcp_status_;
     BtnRect settings_toggle_mcp_btn_;

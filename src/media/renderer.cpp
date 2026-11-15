@@ -756,6 +756,8 @@ constexpr wchar_t ArrowRight = 0xE04D, Camera = 0xE068, ChevronDown = 0xE071,
                   Settings = 0xE157, Smartphone = 0xE166, Square = 0xE16A,
                   Wifi = 0xE1AD, X = 0xE1B1, QrCode = 0xE1DE, Pin = 0xE258,
                   CircleDot = 0xE348, Usb = 0xE359, ArrowUpRight = 0xE051,
+                  ScrollText = 0xE463, ChartColumn = 0xE2A2, Webcam = 0xE204,
+                  Power = 0xE143, Info = 0xE0FE, History = 0xE1F4, Plus = 0xE140,
                   Highlighter = 0xE0F7, Grid2x2 = 0xE503, Type = 0xE197,
                   Undo2 = 0xE2A0, Check = 0xE070, Play = 0xE13F, Pause = 0xE131;
 }
@@ -1553,11 +1555,6 @@ void Renderer::run() {
                     audio_muted_ = !audio_muted_;
                     if (audio_mute_fn_) audio_mute_fn_(audio_muted_);
                 }
-                if (event.key.keysym.sym == SDLK_m) {
-                    island_visible_ = !island_visible_;
-                    island_animating_ = true;
-                    island_anim_start_ = std::chrono::steady_clock::now();
-                }
                 if (event.key.keysym.sym == SDLK_i) {
                     info_panel_visible_ = !info_panel_visible_;
                     info_panel_animating_ = true;
@@ -1864,10 +1861,7 @@ void Renderer::run() {
                     int mx = event.button.x, my = event.button.y;
                     // Right-click on any bezel button opens its popup menu.
                     std::string target;
-                    if (menu_btn_.w > 0 && in_rect(mx, my, menu_btn_.x, menu_btn_.y,
-                                                    menu_btn_.w, menu_btn_.h)) {
-                        target = "menu";
-                    } else if (log_btn_.w > 0 && in_rect(mx, my, log_btn_.x, log_btn_.y,
+                    if (log_btn_.w > 0 && in_rect(mx, my, log_btn_.x, log_btn_.y,
                                                           log_btn_.w, log_btn_.h)) {
                         target = "log";
                     } else if (record_btn_.w > 0 && in_rect(mx, my, record_btn_.x, record_btn_.y,
@@ -2181,13 +2175,13 @@ void Renderer::run() {
                         }
                     }
 
-                    // Menu star toggle (island visibility)
+                    // Settings gear in the top bezel.
                     if (menu_btn_.w > 0 &&
                         in_rect(mx, my, menu_btn_.x, menu_btn_.y,
                                 menu_btn_.w, menu_btn_.h)) {
-                        island_visible_ = !island_visible_;
-                        island_animating_ = true;
-                        island_anim_start_ = std::chrono::steady_clock::now();
+                        settings_panel_visible_ = !settings_panel_visible_;
+                        settings_panel_animating_ = true;
+                        settings_panel_anim_start_ = std::chrono::steady_clock::now();
                         break;
                     }
 
@@ -2429,6 +2423,59 @@ void Renderer::run() {
                                 mcp_copied_at_ = std::chrono::steady_clock::now();
                             }
 #endif
+                            for (int i = 0; i < 7; ++i) {
+                                if (!hit(settings_action_btns_[i])) continue;
+                                if (i == 6) { running_.store(false); return; }
+                                settings_panel_visible_ = false;
+                                settings_panel_animating_ = true;
+                                settings_panel_anim_start_ = std::chrono::steady_clock::now();
+                                if (i == 0) {
+                                    screenshot_requested_ = true;
+                                    btn_flash_ = true;
+                                    btn_flash_start_ = std::chrono::steady_clock::now();
+                                } else if (i == 1) {
+                                    record_toggle_requested_ = true;
+                                } else if (i == 2) {
+                                    open_screenshot_folder();
+                                } else if (i == 3) {
+                                    toggle_drawer(DrawerMode::Log);
+                                } else if (i == 4) {
+                                    toggle_drawer(DrawerMode::Stats);
+                                } else {
+                                    toggle_webcam_drawer();
+                                }
+                            }
+                            if (hit(settings_dev_add_btn_)) {
+                                settings_panel_visible_ = false;
+                                settings_panel_animating_ = true;
+                                settings_panel_anim_start_ = std::chrono::steady_clock::now();
+                                show_android_panel();
+                            }
+                            if (hit(settings_dev_disc_btn_) && disconnect_source_fn_ && !settings_dev_id_.empty())
+                                disconnect_source_fn_(settings_dev_id_);
+                            if (hit(settings_help_guide_btn_)) {
+                                settings_panel_visible_ = false;
+                                settings_panel_animating_ = true;
+                                settings_panel_anim_start_ = std::chrono::steady_clock::now();
+                                setup_guide_visible_ = true;
+                                setup_guide_auto_ = false;
+                            }
+                            if (hit(settings_help_ver_btn_) || hit(settings_help_about_btn_)) {
+                                bool ver = hit(settings_help_ver_btn_);
+                                settings_panel_visible_ = false;
+                                settings_panel_animating_ = true;
+                                settings_panel_anim_start_ = std::chrono::steady_clock::now();
+                                if (ver) {
+                                    version_panel_visible_ = true;
+                                    version_panel_animating_ = true;
+                                    version_panel_anim_start_ = std::chrono::steady_clock::now();
+                                    version_scroll_offset_ = 0;
+                                } else {
+                                    info_panel_visible_ = true;
+                                    info_panel_animating_ = true;
+                                    info_panel_anim_start_ = std::chrono::steady_clock::now();
+                                }
+                            }
                             if (hit(settings_toggle_mutephone_btn_)) {
                                 settings_.android_mute_phone = !settings_.android_mute_phone;
                                 settings_.save();
@@ -2903,14 +2950,6 @@ void Renderer::run() {
                 pending_frame_ = {};
                 has_new_frame_ = false;
             }
-            // Reveal the island menu again so the waiting screen offers
-            // its full set of pairing/help affordances (counterpart to the
-            // auto-collapse on first frame).
-            if (!island_visible_) {
-                island_visible_ = true;
-                island_animating_ = true;
-                island_anim_start_ = std::chrono::steady_clock::now();
-            }
             std::cout << "[Renderer] Reset to waiting screen\n";
         }
 
@@ -2957,6 +2996,13 @@ void Renderer::render_frame() {
         if (has_clip && !clip.empty() && clip != last_synced_clip_) {
             last_synced_clip_ = clip;
             SDL_SetClipboardText(clip.c_str());
+        }
+        if (!settings_.tip_drop_shown && ever_received_frame_ && android_input_active_()) {
+            toast_text_ = "Tip: drop files here to install or send them";
+            toast_active_ = true;
+            toast_start_ = std::chrono::steady_clock::now();
+            settings_.tip_drop_shown = true;
+            settings_.save();
         }
         // A phone plugged in that needs a step opens the guide on the right
         // brand; it closes again once the phone is usable.
@@ -3700,7 +3746,7 @@ void Renderer::render_frame() {
         int dot_r = std::max(2, ui_ref_width() / 175);
         int star_cx = frame_dst_x_ + frame_dst_w_ / 2;
         int star_cy = frame_dst_y_ + bezel_top / 2;
-        int hit_sz = std::max(16, dot_r * 6);
+        int hit_sz = std::max(24, dot_r * 9);
         menu_btn_ = {star_cx - hit_sz / 2, star_cy - hit_sz / 2, hit_sz, hit_sz};
 
         int smx, smy;
@@ -3709,13 +3755,13 @@ void Renderer::render_frame() {
         uint8_t sa = star_hover ? 240 : 160;
         SDL_SetRenderDrawColor(sdl_renderer_, 220, 220, 220, sa);
 
-        // Menu toggle: chevron down (menu closed) / up (open).
+        // Settings: the one button on the frame (everything else lives
+        // inside the Settings panel).
         int g_sz = std::max(8, dot_r * 6);
-        draw_glyph(sdl_renderer_, island_anim_ > 0.5f ? lucide::ChevronUp : lucide::ChevronDown,
-                   star_cx, star_cy, g_sz * 3 / 2, 220, 224, 230, sa);
+        draw_glyph(sdl_renderer_, lucide::Settings, star_cx, star_cy, g_sz * 2, 220, 224, 230, sa);
         if (star_hover) {
             bezel_hover_key = "menu";
-            bezel_hover_text = "Menu (M)";
+            bezel_hover_text = "Settings (S)";
             bezel_hover_ax = star_cx;
             bezel_hover_ay = star_cy + dot_r + 4;
         }
@@ -3913,77 +3959,51 @@ void Renderer::render_frame() {
     // first-run state). Draws below the toast pill when both are visible.
     draw_update_banner();
 
-    // Source picker — small dots in bottom bezel, one per connected device.
-    // Each dot is drawn as a play triangle when the source is streaming
-    // live, and as a pause icon (two bars) when the iOS client has signaled
-    // the video stream is paused. Disambiguates state when several devices
-    // are connected at once.
+    // Source picker: only with two or more phones. One chip per phone with
+    // its (shortened) name in the bottom bezel; the phone on screen is
+    // filled with the accent colour. Click switches, right-click opens the
+    // per-phone menu. With one phone nothing is shown (Settings > Phone).
     source_btns_.clear();
     if (get_sources_fn_) {
         auto sources = get_sources_fn_();
-        if (sources.size() >= 1) {
+        if (sources.size() >= 2) {
             float scale = (float)frame_dst_w_ / phone_frame_.frame_width();
             int bezel_bottom = frame_dst_h_ -
                 (int)((phone_frame_.screen_y() + phone_frame_.screen_height()) * scale);
-            // Source-dot size derived from ui_ref_width() so the picker
-            // stays compact (and dots stay close together) on large sources.
-            int dot_r = std::max(3, ui_ref_width() / 120);
-            int spacing = dot_r * 7;
-            int total_w = spacing * (int)(sources.size() - 1);
-            // Anchor: centred in the LEFT half of the bottom bezel,
-            // between where the rounded corner arc finishes (left limit)
-            // and the centred W (webcam) button (right limit). This puts
-            // the cluster visually in the middle of the empty left side,
-            // matching the user's annotated screenshot.
-            int arc_end_x   = frame_dst_x_ + bezel_bottom + dot_r * 2;
-            int wcam_dot_r  = std::max(2, ui_ref_width() / 175);
-            int wcam_hit_sz = std::max(16, wcam_dot_r * 6);
-            int wcam_left   = frame_dst_x_ + frame_dst_w_ / 2 - wcam_hit_sz / 2;
-            int cluster_cx  = (arc_end_x + wcam_left) / 2;
-            int start_x     = cluster_cx - total_w / 2;
-            if (start_x < arc_end_x) start_x = arc_end_x;
+            int cr = (int)(phone_frame_.corner_radius() * scale);
+            int chip_h = std::max(12, std::min(bezel_bottom - 4, ui_ref_width() / 16));
+            int font = std::max(9, chip_h * 62 / 100);
             int cy = frame_dst_y_ + frame_dst_h_ - bezel_bottom / 2;
-            int hit_sz = std::max(20, dot_r * 6);
-
+            int avail = frame_dst_w_ - cr * 2;
+            int n = (int)sources.size();
+            int gapc = std::max(4, chip_h / 3);
+            int chip_w = std::min(chip_h * 6, (avail - (n - 1) * gapc) / n);
+            int x = frame_dst_x_ + (frame_dst_w_ - (n * chip_w + (n - 1) * gapc)) / 2;
+            const Accent& ac = accent_for(settings_.accent_color);
             int pmx, pmy;
             SDL_GetMouseState(&pmx, &pmy);
-
-            for (size_t i = 0; i < sources.size(); ++i) {
-                int cx = start_x + (int)i * spacing;
-                BtnRect r{cx - hit_sz / 2, cy - hit_sz / 2, hit_sz, hit_sz};
+            for (int i = 0; i < n; ++i, x += chip_w + gapc) {
+                BtnRect r{x, cy - chip_h / 2, chip_w, chip_h};
                 bool hover = in_rect(pmx, pmy, r.x, r.y, r.w, r.h);
-
-                // Active source: bright white, full size. Inactive: dimmed
-                // and slightly smaller. No background rim — the contrast
-                // alone disambiguates which device is currently shown.
-                uint8_t a;
-                if (sources[i].active)         a = 255;
-                else if (hover)                a = 200;
-                else if (sources[i].streaming) a = 110;
-                else                           a = 70;
-                if (sources[i].active)
-                    SDL_SetRenderDrawColor(sdl_renderer_, 255, 255, 255, 255);
-                else
-                    SDL_SetRenderDrawColor(sdl_renderer_, 220, 220, 220, a);
-
-                int icon_r = dot_r + (sources[i].active ? 2 : 1);
-
-                uint8_t ia = sources[i].active ? 255 : a;
-                draw_glyph(sdl_renderer_, sources[i].paused ? lucide::Pause : lucide::Play,
-                           cx, cy, icon_r * 3, 230, 234, 240, ia);
-
+                SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_NONE);
+                if (sources[i].active)  SDL_SetRenderDrawColor(sdl_renderer_, ac.r, ac.g, ac.b, 255);
+                else if (hover)         SDL_SetRenderDrawColor(sdl_renderer_, 64, 70, 82, 255);
+                else                    SDL_SetRenderDrawColor(sdl_renderer_, 44, 48, 56, 255);
+                fill_round_rect(sdl_renderer_, r.x, r.y, r.w, r.h, chip_h / 2);
+                std::string name = sources[i].name;
+                if (sources[i].paused) name += " (paused)";
+                int maxw = chip_w - chip_h;
+                uint8_t ink = sources[i].active ? (ac.dark_ink ? 14 : 255) : 210;
+                draw_text_mid(sdl_renderer_, name, fit_text_px(sdl_renderer_, name, font, maxw, 600),
+                              ink, ink, ink, 255, r.x + r.w / 2, cy, 1, 600);
                 source_btns_.emplace_back(sources[i].id, r);
                 if (hover) {
                     bezel_hover_key = "src:" + sources[i].id;
-                    std::string state = sources[i].paused ? " (paused)"
-                                       : sources[i].streaming ? " (live)"
-                                       : "";
-                    std::string shortcut;
-                    if (i < 9) shortcut = "  (Ctrl+" + std::to_string((int)i + 1) + ")";
-                    bezel_hover_text = sources[i].name + shortcut + state +
-                                       "\nLeft-click: switch  \u00B7  Right-click: menu";
-                    bezel_hover_ax = cx;
-                    bezel_hover_ay = cy - dot_r - 4;
+                    std::string shortcut = i < 9 ? "  (Ctrl+" + std::to_string(i + 1) + ")" : "";
+                    bezel_hover_text = sources[i].name + shortcut +
+                                       "\nClick: show this phone  ·  Right-click: menu";
+                    bezel_hover_ax = r.x + r.w / 2;
+                    bezel_hover_ay = r.y - 4;
                 }
             }
         }
@@ -6003,8 +6023,11 @@ void Renderer::draw_settings_panel() {
 #else
     const int phone_rows = 9;
 #endif
-    const int rows = tab == 0 ? 4 : tab == 1 ? phone_rows : tab == 2 ? (resize_on ? 7 : 5) : 2;
-    int total_h = pad + title_h + gap + tabs_h + gap + rows * row_h
+    // Phone: + the connected-phone row. Capture: + the two webcam rows.
+    // Help: guide row, five tips, version/about row.
+    const int rows = tab == 0 ? 4 : tab == 1 ? phone_rows + 1 : tab == 2 ? (resize_on ? 9 : 7) : 7;
+    const int act_h = row_h;   // quick-action buttons above the tabs
+    int total_h = pad + title_h + gap + act_h + gap + tabs_h + gap + rows * row_h
                 + (tab == 1 ? gap + note_h : 0) + pad;
 
     // Slide animation
@@ -6026,6 +6049,9 @@ void Renderer::draw_settings_panel() {
     settings_toggle_kbd_btn_ = settings_toggle_scroff_btn_ = settings_toggle_paste_btn_ = {};
     settings_toggle_mcp_btn_ = settings_mcp_copy_btn_ = {};
     settings_toggle_mutephone_btn_ = {};
+    for (auto& b : settings_action_btns_) b = {};
+    settings_dev_add_btn_ = settings_dev_disc_btn_ = {};
+    settings_help_guide_btn_ = settings_help_ver_btn_ = settings_help_about_btn_ = {};
     for (auto& b : settings_seg_res_btns_) b = {};
     for (auto& b : settings_seg_fps_btns_) b = {};
     for (auto& b : settings_seg_ios_fps_btns_) b = {};
@@ -6064,9 +6090,37 @@ void Renderer::draw_settings_panel() {
     }
     cy += title_h + gap;
 
+    // Quick actions: what used to be on the frame.
+    {
+        static const wchar_t kIcons[7] = {lucide::Camera, lucide::Circle, lucide::Folder,
+                                          lucide::ScrollText, lucide::ChartColumn,
+                                          lucide::Webcam, lucide::Power};
+        static const char* const kTips[7] = {"Screenshot (Ctrl+S)", "Record (Ctrl+R)",
+                                             "Screenshots folder", "Log (L)", "Statistics (T)",
+                                             "Webcam (W)", "Quit PhoneMimi"};
+        const int n = 7, content_w = panel_w - pad * 2;
+        int sz = std::min(act_h, (content_w - (n - 1) * 6) / n);
+        int sgap = n > 1 ? (content_w - n * sz) / (n - 1) : 0;
+        for (int i = 0; i < n; ++i) {
+            BtnRect b{panel_x + pad + i * (sz + sgap), cy + (act_h - sz) / 2, sz, sz};
+            bool hov = in_rect(mx, my, b.x, b.y, b.w, b.h);
+            wchar_t icon = kIcons[i];
+            if (i == 1 && recorder_.is_recording()) icon = lucide::Square;
+            ui_round_btn_(b, icon, hov);
+            settings_action_btns_[i] = b;
+            if (hov) {
+                pending_tooltip_text_ = kTips[i];
+                pending_tooltip_x_ = b.x + b.w / 2;
+                pending_tooltip_y_ = b.y + b.h + 4;
+                pending_tooltip_below_ = true;
+            }
+        }
+    }
+    cy += act_h + gap;
+
     // Tab bar: segmented track with a sliding pill.
     {
-        static const char* const names[4] = {"General", "Phone", "Capture", "Webcam"};
+        static const char* const names[4] = {"General", "Phone", "Capture", "Help"};
         ui_segment_(panel_x + pad, cy, panel_w - pad * 2, tabs_h, names, 4, tab,
                     "settings.tabs", settings_tab_btns_, label_h, text_alpha);
     }
@@ -6171,6 +6225,31 @@ void Renderer::draw_settings_panel() {
         settings_toggle_compname_btn_ = toggle("Computer name as receiver name", settings_.use_computer_name);
         settings_toggle_log_btn_      = toggle("Save a log file", log_to_file_session_);
     } else if (tab == 1) {
+        {
+            // The phone on screen, with Add / Disconnect.
+            int y = begin_row(false);
+            std::string dev_name;
+            settings_dev_id_.clear();
+            if (get_sources_fn_)
+                for (auto& s : get_sources_fn_())
+                    if (s.active) { dev_name = s.name; settings_dev_id_ = s.id; }
+            int ph = label_h + 10, pw = label_h * 5;
+            BtnRect add{card_x + card_w - inner - pw, y + (row_h - ph) / 2, pw, ph};
+            ui_pill_(add, "Add", lucide::Plus, false, in_rect(mx, my, add.x, add.y, add.w, add.h), text_alpha);
+            settings_dev_add_btn_ = add;
+            int right = add.x - 6;
+            if (!settings_dev_id_.empty() && disconnect_source_fn_) {
+                int dw = label_h * 7;
+                BtnRect dc{add.x - 6 - dw, add.y, dw, ph};
+                ui_pill_(dc, "Disconnect", 0, false, in_rect(mx, my, dc.x, dc.y, dc.w, dc.h), text_alpha);
+                settings_dev_disc_btn_ = dc;
+                right = dc.x - 6;
+            }
+            std::string label = dev_name.empty() ? "No phone connected" : dev_name;
+            text(label, fit_text_px(sdl_renderer_, label, label_h, right - card_x - inner * 2), card_x + inner,
+                 y + row_h / 2, dev_name.empty() ? 150 : 230, dev_name.empty() ? 154 : 234,
+                 dev_name.empty() ? 162 : 240, 0);
+        }
         settings_toggle_usb_btn_     = toggle("Auto-connect over USB", settings_.android_auto_usb);
         settings_toggle_kbd_btn_     = toggle("Type from this keyboard", settings_.android_keyboard_on);
         settings_toggle_paste_btn_   = toggle("Type by pasting", settings_.android_type_via_paste);
@@ -6245,9 +6324,40 @@ void Renderer::draw_settings_panel() {
             text(cmbuf, label_h, minus_x + bs + val_w / 2, y + row_h / 2, 236, 236, 241, 1);
             settings_toggle_save_original_btn_ = toggle("Keep the original too", settings_.screenshot_save_original_too);
         }
-    } else {
         settings_toggle_webcam_mirror_btn_ = toggle("Mirror the webcam", settings_.webcam_mirror_h);
         settings_toggle_webcam_record_btn_ = toggle("Webcam in recordings", settings_.webcam_include_in_recording);
+    } else {
+        // Help: the cable guide, what the app can do, version and about.
+        {
+            int y = begin_row(true);
+            row_label("Connect a phone with a cable", y, label_h * 2);
+            draw_glyph(sdl_renderer_, lucide::ChevronRight, card_x + card_w - inner - label_h / 2,
+                       y + row_h / 2, label_h, 150, 154, 162, text_alpha);
+            settings_help_guide_btn_ = {card_x, y, card_w, row_h};
+        }
+        static const char* const kTipsHelp[5] = {
+            "Drop files on the phone: APKs install, others go to Download",
+            "Copy on one side, paste on the other",
+            "Phone sound plays here too; U mutes the PC",
+            "Ctrl+S screenshot, Ctrl+R record, F fullscreen",
+            "Claude Code control: Phone > Claude control (MCP)"};
+        for (const char* t : kTipsHelp) {
+            int y = begin_row(false);
+            text(t, fit_text_px(sdl_renderer_, t, label_h, card_w - inner * 2), card_x + inner,
+                 y + row_h / 2, 200, 204, 212, 0);
+        }
+        {
+            int y = begin_row(false);
+            int ph = label_h + 10, pw = (card_w - inner * 3) / 2;
+            BtnRect ver{card_x + inner, y + (row_h - ph) / 2, pw, ph};
+            BtnRect about{ver.x + pw + inner, ver.y, pw, ph};
+            ui_pill_(ver, "Version history", lucide::History, false,
+                     in_rect(mx, my, ver.x, ver.y, ver.w, ver.h), text_alpha);
+            ui_pill_(about, "About", lucide::Info, false,
+                     in_rect(mx, my, about.x, about.y, about.w, about.h), text_alpha);
+            settings_help_ver_btn_ = ver;
+            settings_help_about_btn_ = about;
+        }
     }
 
     SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
@@ -7313,17 +7423,9 @@ void Renderer::layout_side_buttons_() {
         if (horizontal || log_edge_free) phys(3, phone_frame_.side_power(), false);
     }
 
-    // Drawer handles (log, statistics, webcam): stacked half-way down the
-    // right edge, below the power button.
-    {
-        const int len = std::max(14, fh / 26);
-        const int gap = len * 3 / 4;
-        int y = fy + fh / 2 - (len * 3 + gap * 2) / 2;
-        for (int i = 4; i <= 6; ++i, y += len + gap) {
-            if (log_edge_free) place(i, 1, y, len, bezel_r);
-            else place_inside(i, 1, fx + fw - bezel_r / 2, y + len / 2, len, std::max(3, bezel_r / 3));
-        }
-    }
+    // Log, statistics and webcam (4-6) open from Settings now: no handles.
+    (void)place_inside;
+    (void)bezel_r;
 
     // Always-on-top pin: top edge, just past the top-left corner curve.
     {
@@ -7342,9 +7444,9 @@ void Renderer::draw_side_buttons_(std::string& hover_key, std::string& hover_tex
     uint8_t br, bg, bb;
     phone_frame_.button_color(&br, &bg, &bb);
     const bool android = android_input_active_();
-    static const char* const android_tips[4] = {"Mute", "Volume up", "Volume down", "Power"};
+    static const char* const android_tips[4] = {"Mute PC sound (U)", "Volume up", "Volume down", "Power"};
     static const char* const other_tips[4] = {
-        "Mute PC audio", "Volume: use the phone", "Volume: use the phone", "Power: use the phone"};
+        "Mute PC sound (U)", "Volume: use the phone", "Volume: use the phone", "Power: use the phone"};
     const bool drawer_open = log_panel_visible_ && log_panel_anim_ > 0.5f;
     const bool active[kSideBtnCount] = {
         false, false, false, false,
@@ -7414,6 +7516,13 @@ void Renderer::draw_side_buttons_(std::string& hover_key, std::string& hover_tex
 
 void Renderer::press_side_button_(int index) {
     if (index < 0 || index > 3) return;
+    // The mute button mutes the PC (like U) for every phone; the phone's
+    // own speaker has "Mute phone speaker" in Settings.
+    if (index == 0) {
+        audio_muted_ = !audio_muted_;
+        if (audio_mute_fn_) audio_mute_fn_(audio_muted_);
+        return;
+    }
     if (android_input_active_()) {
         // KEYCODE_VOLUME_MUTE, VOLUME_UP, VOLUME_DOWN, POWER
         static const int codes[4] = {164, 24, 25, 26};

@@ -59,6 +59,8 @@ struct Settings {
     bool mcp_enabled = false;
     // Phone sound plays on the PC and, by default, on the phone too.
     bool android_mute_phone = false;
+    // The one-time "drop files here" tip was shown.
+    bool tip_drop_shown = false;
     int mcp_port = 47290;
     std::string mcp_token;
 

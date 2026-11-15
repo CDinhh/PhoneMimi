@@ -79,8 +79,7 @@ view-only: `screenshot` and `ocr_screen` work, input does not.
 | Key | Action |
 |-----|--------|
 | `A` | Add an Android phone |
-| `S` | Settings |
-| `M` | Island menu |
+| `S` | Settings (also the gear on top of the phone) |
 | `L` / `T` | Log / statistics drawer |
 | `W` | Webcam drawer |
 | `V` | Version history |
@@ -116,7 +115,7 @@ and an MSI.
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| **3.5.0** | 16.11.2026 | Phone sound on the PC (plays on both, or mute the phone in Settings), clipboard both ways, drop files to install APKs or send files, cable setup guide that opens when a phone is plugged in, faster tooltips. |
+| **3.5.0** | 16.11.2026 | Phone sound on the PC (plays on both, or mute the phone in Settings), clipboard both ways, drop files to install APKs or send files, cable setup guide that opens when a phone is plugged in. Cleaner frame: one Settings gear; quick actions, log, statistics, webcam and a Help tab live in Settings; phone name chips only with two or more phones; the side mute button mutes the PC (like `U`). Faster tooltips. |
 | **3.4.3** | 16.11.2026 | Sharper mirrored video: the phone picture is no longer shrunk too far and stretched back, and the last step takes 4 samples per pixel. |
 | **3.4.2** | 15.11.2026 | Sharper phone frame edges and penguin logo when the window is small. |
 | **3.4.1** | 15.11.2026 | MCP: screenshots always show the latest screen, `connect_wifi` keeps a working phone, steadier `adb devices` and UI dumps. |
