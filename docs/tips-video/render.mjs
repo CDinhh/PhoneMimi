@@ -18,6 +18,7 @@ const page = await browser.newPage();
 await page.setViewport({ width: 720, height: 800, deviceScaleFactor: 1 });
 await page.goto(pathToFileURL(path.join(here, 'tips.html')).href + `?clip=${clip}`);
 await page.evaluate(() => document.fonts.ready);
+await page.evaluate(() => Promise.all([...document.images].map(i => i.complete ? 1 : new Promise(r => { i.onload = r; i.onerror = r; }))));
 const dur = await page.evaluate(() => window.DUR);
 
 async function shot(t, file) {

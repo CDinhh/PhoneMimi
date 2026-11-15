@@ -8,16 +8,10 @@ html, body { margin: 0; width: 720px; height: 800px; overflow: hidden; backgroun
   background: radial-gradient(120% 80% at 20% 0%, #172238 0%, #0d1016 60%); }
 .abs { position: absolute; }
 .ic { font-family: L; line-height: 1; display: flex; align-items: center; justify-content: center; }
-.phone { width: 270px; height: 540px; border-radius: 46px; background: #1b1e25;
-  box-shadow: 0 30px 60px rgba(0,0,0,.55), inset 0 0 0 1.5px #2c313b; }
-.screen { position: absolute; left: 11px; top: 11px; right: 11px; bottom: 11px; border-radius: 36px;
-  background: #f2f4f8; overflow: hidden; }
-.notch { position: absolute; left: 50%; top: 9px; width: 70px; height: 20px; margin-left: -35px;
-  border-radius: 12px; background: #1b1e25; z-index: 5; }
-.app { width: 46px; height: 46px; border-radius: 14px; }
-.row { position: absolute; left: 16px; right: 16px; height: 44px; border-radius: 12px; background: #fff;
-  box-shadow: 0 1px 2px rgba(15,20,30,.08); }
-.bar { position: absolute; height: 8px; border-radius: 4px; background: #d9dee8; }
+.app { width: 46px; height: 46px; border-radius: 14px; box-shadow: 0 4px 10px rgba(0,0,0,.35); }
+.row { position: absolute; left: 14px; right: 14px; height: 44px; border-radius: 12px; background: #182031;
+  box-shadow: inset 0 0 0 1px #232c40; color: #e7ecf5; }
+.bar { position: absolute; height: 8px; border-radius: 4px; background: #2b3549; }
 .key { width: 46px; height: 46px; border-radius: 11px; background: #1f2430; color: #dfe5f0;
   font-size: 19px; display: flex; align-items: center; justify-content: center;
   box-shadow: 0 4px 0 #11151d, inset 0 0 0 1px #2d3442; }
@@ -52,20 +46,68 @@ function set(e, x, y, s = 1, o = 1, r = 0) {
 }
 const CURSOR = '<svg viewBox="0 0 30 36" width="30" height="36"><path d="M3 2 L3 29 L10 22.5 L15 33 L19.5 31 L14.6 20.8 L24 20.8 Z" fill="#fff" stroke="#0d1016" stroke-width="2" stroke-linejoin="round"/></svg>';
 
-// A phone at (x, y) with a home screen of app icons. Returns parts.
+// ---- The PhoneMimi phone, same proportions as PhoneFrame::generate ----
+// screen 244 x 542 (1080 x 2400), bezel 2.8 % / 4.2 % of the width,
+// outer corner 11 %, side buttons sticking out in a lighter shade, the
+// Settings bar in the top bezel, the "polar night" waiting screen inside.
+const SW = 244, SH = 542, BS = 7, BT = 10, FW = SW + 2 * BS, FH = SH + 2 * BT;
+const R_OUT = 27, R_SCR = R_OUT - BS;
+const BEZEL = 'rgb(28,28,30)', EDGE = 'rgb(58,58,62)', BTN = 'rgb(56,56,58)';
+const SX = BS, SY = BT;   // screen offset inside the phone
+
 function phone(x, y) {
-  const p = el('abs phone', { left: x + 'px', top: y + 'px' });
-  el('notch', {}, '', p);
-  const scr = el('screen', {}, '', p);
-  const home = el('abs', { inset: '0' }, '', scr);
-  const cols = ['#ff6b6b', '#ffb547', '#4fd18b', '#4f8ef7', '#a77bf3', '#ff7ab6', '#38c6d9', '#f4d03f'];
-  const apps = [];
-  for (let i = 0; i < 8; i++) {
-    const a = el('abs app', { left: 22 + (i % 4) * 54 + 'px', top: 56 + Math.floor(i / 4) * 64 + 'px',
-      background: `linear-gradient(145deg, ${cols[i]}, ${cols[i]}cc)` }, '', home);
-    apps.push(a);
-  }
-  return { p, scr, home, apps };
+  const p = el('abs', { left: x + 'px', top: y + 'px', width: FW + 'px', height: FH + 'px' });
+  // side buttons (behind the body): action, volume up/down on the left, power on the right
+  const m = 4, tuck = 3;
+  const btn = (left, along, len) => el('abs', { left: left + 'px', top: along + 'px', width: m + tuck + 'px',
+    height: len + 'px', borderRadius: '3px', background: BTN }, '', p);
+  const act_y = BT + SH * .17, act_h = SH * .03;
+  const vol_h = SH * .0675, vu = act_y + act_h + vol_h / 3, vd = vu + vol_h + vol_h / 3;
+  const pw_h = SH * .0975, pw_y = vd + vol_h - pw_h;
+  btn(-m, act_y, act_h); btn(-m, vu, vol_h); btn(-m, vd, vol_h); btn(FW - tuck, pw_y, pw_h);
+  const body = el('abs', { inset: 0, borderRadius: R_OUT + 'px', background: BEZEL,
+    boxShadow: `0 30px 60px rgba(0,0,0,.55), inset 0 0 0 1px ${EDGE}` }, '', p);
+  // Settings bar in the top bezel
+  el('abs', { left: FW / 2 - FW * .11 + 'px', top: BT / 2 - 2 + 'px', width: FW * .22 + 'px', height: '4px',
+    borderRadius: '2px', background: 'rgba(205,210,218,.6)' }, '', body);
+  const scr = el('abs', { left: SX + 'px', top: SY + 'px', width: SW + 'px', height: SH + 'px',
+    borderRadius: R_SCR + 'px', overflow: 'hidden', background: '#090b10' }, '', p);
+  // polar night: radial glow, snow, rings, penguin badge
+  const glow = el('abs', { inset: 0, background:
+    `radial-gradient(ellipse ${SH * .75 * 2}px ${SH * .75 * 1.6}px at 50% 30%, rgb(28,38,54) 0%, rgb(9,11,16) 100%)` }, '', scr);
+  const flakes = [[.12, .10, 1.4], [.78, .55, 1], [.64, .30, 1.2], [.22, .80, 1], [.88, .20, 1.4], [.40, .65, 1], [.55, .92, 1.2], [.05, .45, 1]]
+    .map(f => ({ f, e: el('abs', { width: f[2] * 2.4 + 'px', height: f[2] * 2.4 + 'px', borderRadius: '50%', background: '#fff' }, '', scr) }));
+  const u = Math.min(SW, SH * .62), R = Math.max(40, u * .2), mcx = SW / 2, mcy = SH * .30;
+  const rings = [0, 1].map(() => el('abs', { borderRadius: '50%', border: '2px solid rgba(156,201,232,.5)' }, '', scr));
+  const badge = el('abs', { left: mcx - R + 'px', top: mcy - R + 'px', width: 2 * R + 'px', height: 2 * R + 'px' }, '', scr);
+  const core = R - Math.max(5, R / 13);
+  badge.innerHTML = `
+    <div class="abs" style="inset:-1px;border-radius:50%;background:rgba(255,255,255,.09)"></div>
+    <div class="abs" style="left:${R - core}px;top:${R - core}px;width:${2 * core}px;height:${2 * core}px;border-radius:50%;background:rgb(214,226,238)"></div>
+    <div class="abs" style="left:${R - core * .9}px;top:${R - core * .9 - core / 14}px;width:${1.8 * core}px;height:${1.8 * core}px;border-radius:50%;background:rgb(236,242,248)"></div>
+    <div class="abs" style="left:${R - core * .6}px;top:${R - core * .6 - core / 6}px;width:${1.2 * core}px;height:${1.2 * core}px;border-radius:50%;background:rgb(252,253,255)"></div>
+    <img class="abs peng" src="file:///D:/Github/1PhoneMirror/resources/logo.png"
+      style="left:${R - core * .685}px;top:${R - core * .685}px;width:${core * 1.37}px;height:${core * 1.37}px">`;
+  const peng = badge.querySelector('.peng');
+  const home = el('abs', { inset: 0 }, '', scr);
+  const cols = ['#ff6b6b', '#ffb547', '#4fd18b', '#4f8ef7', '#a77bf3', '#ff7ab6', '#38c6d9'];
+  const apps = cols.map((c, i) => el('abs app', { left: 18 + (i % 4) * 54 + 'px', top: 318 + Math.floor(i / 4) * 62 + 'px',
+    background: `linear-gradient(145deg, ${c}, ${c}cc)` }, '', home));
+  const tick = t => {
+    flakes.forEach(({ f, e }) => {
+      const yy = ((f[1] + t / 26) % 1);
+      e.style.left = f[0] * SW + Math.sin(t / 2.4 + f[1] * 6) * 6 + 'px';
+      e.style.top = yy * SH + 'px'; e.style.opacity = .43 * (1 - yy * .6);
+    });
+    rings.forEach((r, i) => {
+      const k = ((t / 2.8) + i * .5) % 1, rr = R + k * R * .9;
+      Object.assign(r.style, { left: mcx - rr + 'px', top: mcy - rr + 'px', width: 2 * rr + 'px', height: 2 * rr + 'px',
+        opacity: (1 - k) * .9 });
+    });
+    const bob = Math.sin(t / 3.2 * 6.2831853);
+    peng.style.transform = `translateY(${-bob * u / 48}px) rotate(${bob * 2}deg)`;
+  };
+  return { p, scr, home, apps, tick, glow, badge, rings };
 }
 function ripple(parent) { return el('abs ripple', { width: '10px', height: '10px', opacity: 0 }, '', parent); }
 function doRipple(r, cx, cy, k) {
@@ -74,39 +116,46 @@ function doRipple(r, cx, cy, k) {
   r.style.left = cx - d / 2 + 'px'; r.style.top = cy - d / 2 + 'px';
   r.style.opacity = k <= 0 || k >= 1 ? 0 : 1 - k;
 }
+function keyOn(k, on) {
+  k.style.background = on ? ACC : '#1f2430';
+  k.style.transform = `translateY(${on ? 3 : 0}px)`;
+  k.style.boxShadow = on ? '0 1px 0 #11151d' : '0 4px 0 #11151d, inset 0 0 0 1px #2d3442';
+}
+// an app screen in the phone (dark, like the app's own panels)
+const appView = scr => el('abs', { inset: 0, background: '#0f141d' }, '', scr);
 
 let render, DUR;
 
 if (CLIP === 1) {
   // Mouse = touch, wheel = scroll, PC keys type on the phone.
   DUR = 5.4;
-  const P = phone(225, 34);
-  const list = el('abs', { inset: '0', opacity: 0, background: '#f2f4f8' }, '', P.scr);
-  const field = el('row', { top: '48px', height: '40px', display: 'flex', alignItems: 'center',
-    paddingLeft: '14px', fontSize: '16px', color: '#1d2433', boxShadow: 'inset 0 0 0 2px #dfe4ee' }, '', list);
+  const PX = 231, PY = 30;
+  const P = phone(PX, PY);
+  const list = appView(P.scr); list.style.opacity = 0;
+  const field = el('row', { top: '44px', height: '40px', display: 'flex', alignItems: 'center',
+    paddingLeft: '14px', fontSize: '16px', boxShadow: 'inset 0 0 0 2px #2c3650' }, '', list);
   const txt = el('', { display: 'inline' }, '', field);
-  const caret = el('', { display: 'inline-block', width: '2px', height: '20px', background: ACC, marginLeft: '2px' }, '', field);
-  const feedBox = el('abs', { left: 0, right: 0, top: '100px', bottom: 0, overflow: 'hidden' }, '', list);
+  const caret = el('', { display: 'inline-block', width: '2px', height: '20px', background: ACC_L, marginLeft: '2px' }, '', field);
+  const feedBox = el('abs', { left: 0, right: 0, top: '96px', bottom: 0, overflow: 'hidden' }, '', list);
   const feed = el('abs', { left: 0, right: 0, top: '4px', height: '900px' }, '', feedBox);
   for (let i = 0; i < 12; i++) {
     const r = el('row', { top: i * 56 + 'px', height: '46px' }, '', feed);
     el('abs', { left: '10px', top: '9px', width: '28px', height: '28px', borderRadius: '9px',
       background: ['#4f8ef7', '#4fd18b', '#ffb547', '#a77bf3'][i % 4] }, '', r);
-    el('bar', { left: '48px', top: '12px', width: 90 + (i * 37) % 60 + 'px' }, '', r);
-    el('bar', { left: '48px', top: '26px', width: 50 + (i * 23) % 50 + 'px', background: '#e8ebf1' }, '', r);
+    el('bar', { left: '48px', top: '12px', width: 80 + (i * 37) % 60 + 'px' }, '', r);
+    el('bar', { left: '48px', top: '26px', width: 46 + (i * 23) % 50 + 'px', background: '#232c3d' }, '', r);
   }
-  const keys = ['H', 'E', 'L', 'L', 'O'].map((ch, i) =>
-    el('abs key', { left: 238 + i * 52 + 'px', top: '646px' }, ch));
+  const keys = ['H', 'E', 'L', 'L', 'O'].map((ch, i) => el('abs key', { left: 230 + i * 52 + 'px', top: '650px' }, ch));
   const rp1 = ripple(S), rp2 = ripple(S);
-  const cur = el('abs', { left: 0, top: 0 }, CURSOR); cur.id = 'cursor';
+  const cur = el('abs', {}, CURSOR); cur.id = 'cursor';
   const wheel = el('abs ic', { width: '26px', height: '26px', color: ACC_L, fontSize: '22px', opacity: 0 }, icon(0xE071));
-  const iconPos = { x: 225 + 11 + 22 + 54 + 23, y: 34 + 11 + 56 + 23 };   // 2nd app icon centre
+  const iconPos = { x: PX + SX + 18 + 54 + 23, y: PY + SY + 318 + 23 };   // 2nd app icon
+  const fieldPos = { x: PX + SX + 120, y: PY + SY + 64 };
+  const scrollPos = { x: PX + SX + 122, y: PY + SY + 360 };
   render = t => {
-    const fin = seg(t, 0, .25), fout = 1 - seg(t, DUR - .35, DUR);
-    S.style.opacity = Math.min(fin, fout);
+    S.style.opacity = Math.min(seg(t, 0, .25), 1 - seg(t, DUR - .35, DUR));
+    P.tick(t);
     let cx = lerp(640, iconPos.x, eio(seg(t, .1, .8))), cy = lerp(760, iconPos.y, eio(seg(t, .1, .8)));
-    const fieldPos = { x: 225 + 11 + 120, y: 34 + 11 + 68 };
-    const scrollPos = { x: 225 + 135, y: 34 + 360 };
     if (t > 1.3) { const k = eio(seg(t, 1.3, 1.7)); cx = lerp(iconPos.x, scrollPos.x, k); cy = lerp(iconPos.y, scrollPos.y, k); }
     if (t > 2.6) { const k = eio(seg(t, 2.6, 3.0)); cx = lerp(scrollPos.x, fieldPos.x, k); cy = lerp(scrollPos.y, fieldPos.y, k); }
     const press = (t > .85 && t < 1.0) || (t > 3.05 && t < 3.2);
@@ -114,24 +163,13 @@ if (CLIP === 1) {
     doRipple(rp1, iconPos.x, iconPos.y, seg(t, .9, 1.4));
     doRipple(rp2, fieldPos.x, fieldPos.y, seg(t, 3.1, 3.6));
     P.apps[1].style.transform = `scale(${t > .85 && t < 1.05 ? .9 : 1})`;
-    // the app opens from its icon
     const op = eout(seg(t, 1.0, 1.35));
     list.style.opacity = op;
-    list.style.transform = `scale(${lerp(.3, 1, op)})`; list.style.transformOrigin = '100px 80px';
-    // wheel scrolls the list
-    const sc = eio(seg(t, 1.7, 2.5));
-    feed.style.transform = `translateY(${-190 * sc}px)`;
-    const wv = t > 1.65 && t < 2.55;
-    set(wheel, cx + 18, cy + 18 + Math.sin(t * 18) * 3, 1, wv ? 1 : 0);
-    // keys type into the field
-    const typed = Math.floor(cl((t - 3.4) / .26, 0, 5));
-    txt.textContent = 'HELLO'.slice(0, typed);
-    keys.forEach((k, i) => {
-      const a = 3.4 + i * .26, on = t >= a && t < a + .16;
-      k.style.background = on ? ACC : '#1f2430';
-      k.style.transform = `translateY(${on ? 3 : 0}px)`;
-      k.style.boxShadow = on ? '0 1px 0 #11151d' : '0 4px 0 #11151d, inset 0 0 0 1px #2d3442';
-    });
+    list.style.transform = `scale(${lerp(.3, 1, op)})`; list.style.transformOrigin = `${18 + 54 + 23}px ${318 + 23}px`;
+    feed.style.transform = `translateY(${-190 * eio(seg(t, 1.7, 2.5))}px)`;
+    set(wheel, cx + 18, cy + 18 + Math.sin(t * 18) * 3, 1, t > 1.65 && t < 2.55 ? 1 : 0);
+    txt.textContent = 'HELLO'.slice(0, Math.floor(cl((t - 3.4) / .26, 0, 5)));
+    keys.forEach((k, i) => { const a = 3.4 + i * .26; keyOn(k, t >= a && t < a + .16); });
     caret.style.opacity = t > 3.1 && Math.floor(t * 2.5) % 2 === 0 ? 1 : 0;
   };
 }
@@ -150,21 +188,20 @@ if (CLIP === 2) {
   const pcNew = el('abs', { left: '22px', top: '186px', fontSize: '17px', color: '#9fc0ff', opacity: 0 }, 'On my way', W);
   const pcCaret = el('abs', { left: '22px', top: '187px', width: '2px', height: '20px', background: ACC_L, opacity: 0 }, '', W);
 
-  const P = phone(420, 230);
-  P.home.style.opacity = 0;
-  const notes = el('abs', { inset: '0' }, '', P.scr);
+  const PX = 432, PY = 216;
+  const P = phone(PX, PY);
+  const notes = appView(P.scr);
   const pf = el('row', { top: '86px', height: '44px', display: 'flex', alignItems: 'center', paddingLeft: '14px',
-    fontSize: '15px', color: '#1d2433' }, '', notes);
+    fontSize: '15px' }, '', notes);
   const pfTxt = el('', {}, '', pf);
-  const pfCaret = el('', { display: 'inline-block', width: '2px', height: '18px', background: ACC, marginLeft: '2px' }, '', pf);
+  const pfCaret = el('', { display: 'inline-block', width: '2px', height: '18px', background: ACC_L, marginLeft: '2px' }, '', pf);
   el('row', { top: '142px', height: '44px', display: 'flex', alignItems: 'center', paddingLeft: '14px',
-    fontSize: '15px', color: '#1d2433' }, 'On my way', notes);
-  const phl = el('abs', { left: '24px', top: '150px', height: '28px', width: '0px', borderRadius: '7px',
-    background: 'rgba(37,99,235,.28)' }, '', notes);
-  // phone bubbles: Paste over the empty field, Copy over the selection
-  const bubble = (y, cp) => el('abs ic', { left: '40px', top: y + 'px', width: '40px', height: '34px', borderRadius: '10px',
-    background: '#1d2433', color: '#fff', fontSize: '18px', opacity: 0,
-    boxShadow: '0 6px 14px rgba(15,20,30,.3)' }, icon(cp), notes);
+    fontSize: '15px' }, 'On my way', notes);
+  const phl = el('abs', { left: '22px', top: '150px', height: '28px', width: '0px', borderRadius: '7px',
+    background: 'rgba(79,142,247,.35)' }, '', notes);
+  const bubble = (y, cp) => el('abs ic', { left: '38px', top: y + 'px', width: '40px', height: '34px', borderRadius: '10px',
+    background: '#e9eef7', color: '#0f141d', fontSize: '18px', opacity: 0,
+    boxShadow: '0 6px 14px rgba(0,0,0,.4)' }, icon(cp), notes);
   const pasteB = bubble(46, 0xE3EB), copyB = bubble(102, 0xE0A2);
   const rp = ripple(notes);
 
@@ -175,39 +212,29 @@ if (CLIP === 2) {
   const clip = (txt) => el('abs chip', { left: 0, top: 0, opacity: 0, display: 'flex', alignItems: 'center', gap: '8px', zIndex: 30 },
     `<span class="ic" style="font-size:16px">${icon(0xE089)}</span><span>${txt}</span>`);
   const chipA = clip('Meeting at 9:00'), chipB = clip('On my way');
-  function keyOn(k, on) {
-    k.style.background = on ? ACC : '#1f2430';
-    k.style.transform = `translateY(${on ? 3 : 0}px)`;
-    k.style.boxShadow = on ? '0 1px 0 #11151d' : '0 4px 0 #11151d, inset 0 0 0 1px #2d3442';
-  }
-  const pop = (b, a, z) => { b.style.opacity = t_ > a && t_ < z ? 1 : 0; b.style.transform = `scale(${back(seg(t_, a, a + .25))})`; };
   let t_ = 0;
+  const pop = (b, a, z) => { b.style.opacity = t_ > a && t_ < z ? 1 : 0; b.style.transform = `scale(${back(seg(t_, a, a + .25))})`; };
   render = t => {
     t_ = t;
     S.style.opacity = Math.min(seg(t, 0, .25), 1 - seg(t, DUR - .35, DUR));
-    // 1. PC: select + Ctrl+C
-    hl.style.width = 160 * eout(seg(t, .3, .75));
+    P.tick(t);
     hl.style.width = 160 * eout(seg(t, .3, .75)) + 'px';
     const copyKeys = t < 3.6;
     kC.forEach(k => k.style.opacity = copyKeys ? 1 : 0);
     kV.forEach(k => k.style.opacity = copyKeys ? 0 : 1);
     keyOn(kC[0], t > .85 && t < 1.25); keyOn(kC[1], t > .95 && t < 1.2);
-    // 2. clipboard flies to the phone
     const f = eio(seg(t, 1.3, 2.1));
-    set(chipA, lerp(40, 450, f), lerp(208, 330, f) - Math.sin(f * Math.PI) * 120, lerp(1, .8, f),
+    set(chipA, lerp(40, PX + 20, f), lerp(208, PY + 100, f) - Math.sin(f * Math.PI) * 120, lerp(1, .8, f),
         t > 1.3 && t < 2.15 ? 1 : 0, lerp(-4, 3, f));
-    // 3. phone: Paste bubble, tap, text appears
     pop(pasteB, 2.2, 3.0);
-    doRipple(rp, 60, 63, seg(t, 2.65, 3.1));
+    doRipple(rp, 58, 63, seg(t, 2.65, 3.1));
     pfTxt.textContent = t >= 2.75 ? 'Meeting at 9:00' : '';
     pfCaret.style.opacity = t < 2.75 && Math.floor(t * 2.5) % 2 === 0 ? 1 : 0;
-    // 4. phone: select + Copy bubble, tap
     phl.style.width = 95 * eout(seg(t, 3.2, 3.5)) + 'px';
     pop(copyB, 3.45, 4.0);
-    if (t > 3.8) doRipple(rp, 60, 119, seg(t, 3.8, 4.25));
-    // 5. clipboard flies back, Ctrl+V on the PC
+    if (t > 3.8) doRipple(rp, 58, 119, seg(t, 3.8, 4.25));
     const g = eio(seg(t, 4.0, 4.8));
-    set(chipB, lerp(456, 40, g), lerp(380, 238, g) - Math.sin(g * Math.PI) * 110, lerp(.8, 1, g),
+    set(chipB, lerp(PX + 24, 40, g), lerp(PY + 160, 238, g) - Math.sin(g * Math.PI) * 110, lerp(.8, 1, g),
         t > 4.0 && t < 4.85 ? 1 : 0, lerp(3, -3, g));
     keyOn(kV[0], t > 4.9 && t < 5.3); keyOn(kV[1], t > 5.0 && t < 5.25);
     pcCaret.style.opacity = t > 4.0 && t < 5.1 && Math.floor(t * 2.5) % 2 === 0 ? 1 : 0;
@@ -219,62 +246,59 @@ if (CLIP === 2) {
 if (CLIP === 3) {
   // Any file: dropped into Download. APK: installed.
   DUR = 7.0;
-  const desk = el('abs', { left: '40px', top: '120px', width: '230px', height: '520px', borderRadius: '22px',
+  el('abs', { left: '40px', top: '120px', width: '230px', height: '520px', borderRadius: '22px',
     background: 'rgba(255,255,255,.03)', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.06)' });
   const f1 = el('abs file', { left: '84px', top: '200px', zIndex: 30 }, `<div class="ic" style="background:#ffb547;color:#3a2600">${icon(0xE0F9)}</div>photo.jpg`);
   const f2 = el('abs file', { left: '84px', top: '420px', zIndex: 30 }, `<div class="ic" style="background:#4fd18b;color:#0b3320">${icon(0xE12C)}</div>app.apk`);
-  const P = phone(400, 130);
-  // Download row inside the phone
-  const dl = el('row', { top: '210px', height: '58px', opacity: 0 }, '', P.scr);
-  el('abs ic', { left: '10px', top: '9px', width: '40px', height: '40px', borderRadius: '10px', background: '#fff1d6',
-    color: '#c27b00', fontSize: '22px' }, icon(0xE0F9), dl);
-  el('abs', { left: '60px', top: '10px', fontSize: '13px', color: '#1d2433' }, 'photo.jpg', dl);
-  el('abs ic', { left: '60px', top: '30px', fontSize: '13px', color: '#7a8396', gap: '4px' },
+  const PX = 412, PY = 118;
+  const P = phone(PX, PY);
+  // Download row, under the app icons
+  const dl = el('row', { top: '450px', height: '58px', opacity: 0 }, '', P.scr);
+  el('abs ic', { left: '10px', top: '9px', width: '40px', height: '40px', borderRadius: '10px', background: '#3a2c0c',
+    color: '#ffb547', fontSize: '22px' }, icon(0xE0F9), dl);
+  el('abs', { left: '60px', top: '10px', fontSize: '13px', color: '#e7ecf5' }, 'photo.jpg', dl);
+  el('abs ic', { left: '60px', top: '30px', fontSize: '13px', color: '#8b95a8' },
     `${icon(0xE335)}<span style="font-family:J;margin-left:4px">Download</span>`, dl);
   const dlOk = el('abs ic', { right: '12px', top: '17px', width: '24px', height: '24px', color: '#22c55e', fontSize: '22px' }, icon(0xE225), dl);
-  // install: ring + new app on the home screen
-  const ring = el('abs', { left: '70px', top: '250px', width: '108px', height: '108px', opacity: 0 }, '', P.scr);
-  ring.innerHTML = `<svg width="108" height="108" viewBox="0 0 108 108"><circle cx="54" cy="54" r="46" fill="none" stroke="#dde3ee" stroke-width="8"/>
-    <circle id="arc" cx="54" cy="54" r="46" fill="none" stroke="${ACC}" stroke-width="8" stroke-linecap="round"
+  // install: ring in the lower part, then the app takes the free slot (row 2, column 4)
+  const ring = el('abs', { left: SW / 2 - 54 + 'px', top: '436px', width: '108px', height: '108px', opacity: 0, transform: 'scale(.85)' }, '', P.scr);
+  ring.innerHTML = `<svg width="108" height="108" viewBox="0 0 108 108"><circle cx="54" cy="54" r="46" fill="none" stroke="#2b3549" stroke-width="8"/>
+    <circle id="arc" cx="54" cy="54" r="46" fill="none" stroke="${ACC_L}" stroke-width="8" stroke-linecap="round"
     transform="rotate(-90 54 54)" stroke-dasharray="289" stroke-dashoffset="289"/></svg>`;
   const arc = ring.querySelector('#arc');
-  const pk = el('abs ic', { left: '100px', top: '280px', width: '48px', height: '48px', borderRadius: '14px',
-    background: '#4fd18b', color: '#0b3320', fontSize: '26px', opacity: 0 }, icon(0xE12C), P.scr);
-  const okBadge = el('abs ic', { left: '134px', top: '272px', width: '26px', height: '26px', borderRadius: '50%',
-    background: '#22c55e', color: '#fff', fontSize: '16px', opacity: 0 }, icon(0xE070), P.scr);
+  const PKX = SW / 2 - 24, PKY = 466;
+  const pk = el('abs ic', { left: PKX + 'px', top: PKY + 'px', width: '48px', height: '48px', borderRadius: '14px',
+    background: '#4fd18b', color: '#0b3320', fontSize: '26px', opacity: 0, boxShadow: '0 4px 10px rgba(0,0,0,.35)' }, icon(0xE12C), P.scr);
+  const SLX = 18 + 3 * 54, SLY = 318 + 62;
+  const okBadge = el('abs ic', { left: SLX + 34 + 'px', top: SLY - 8 + 'px', width: '24px', height: '24px', borderRadius: '50%',
+    background: '#22c55e', color: '#fff', fontSize: '15px', opacity: 0 }, icon(0xE070), P.scr);
   const cur = el('abs', {}, CURSOR); cur.id = 'cursor';
-  const fx1 = 84 + 46, fy1 = 200 + 40, fx2 = 84 + 46, fy2 = 420 + 40, px = 400 + 135, py = 130 + 270;
+  const fx1 = 84 + 46, fy1 = 200 + 40, fx2 = 84 + 46, fy2 = 420 + 40, px = PX + SX + SW / 2, py = PY + SY + 250;
   render = t => {
     S.style.opacity = Math.min(seg(t, 0, .25), 1 - seg(t, DUR - .35, DUR));
+    P.tick(t);
     let cx = lerp(660, fx1, eio(seg(t, .1, .7))), cy = lerp(760, fy1, eio(seg(t, .1, .7)));
-    // drag 1: photo -> phone
     const d1 = eio(seg(t, .9, 1.8));
     if (t > .9) { cx = lerp(fx1, px, d1); cy = lerp(fy1, py, d1) - Math.sin(d1 * Math.PI) * 50; }
     const drop1 = eout(seg(t, 1.85, 2.15));
-    const lift1 = t > .75 ? 1 : 0;
     set(f1, (cx - fx1) * (t > .9 ? 1 : 0), (cy - fy1) * (t > .9 ? 1 : 0),
-        lerp(1 + .08 * lift1, .3, drop1), 1 - drop1 * (t > 1.85 ? 1 : 0), t > .9 && t < 1.85 ? -6 : 0);
-    if (t > 2.15) f1.style.opacity = t > 6.4 ? 1 : 0;
+        lerp(t > .75 ? 1.08 : 1, .3, drop1), t > 2.15 ? 0 : 1 - drop1 * (t > 1.85 ? 1 : 0), t > .9 && t < 1.85 ? -6 : 0);
     dl.style.opacity = eout(seg(t, 2.1, 2.4)) * (1 - seg(t, 3.4, 3.7));
     dl.style.transform = `translateY(${lerp(10, 0, eout(seg(t, 2.1, 2.4)))}px)`;
     dlOk.style.transform = `scale(${back(seg(t, 2.35, 2.65))})`;
-    // drag 2: apk -> phone
     if (t > 2.6) { const k = eio(seg(t, 2.6, 3.1)); cx = lerp(px, fx2, k); cy = lerp(py, fy2, k); }
     const d2 = eio(seg(t, 3.3, 4.2));
     if (t > 3.3) { cx = lerp(fx2, px, d2); cy = lerp(fy2, py, d2) - Math.sin(d2 * Math.PI) * 50; }
     const drop2 = eout(seg(t, 4.25, 4.55));
     set(f2, (cx - fx2) * (t > 3.3 ? 1 : 0), (cy - fy2) * (t > 3.3 ? 1 : 0),
-        lerp(t > 3.15 ? 1.08 : 1, .3, drop2), 1 - drop2 * (t > 4.25 ? 1 : 0), t > 3.3 && t < 4.25 ? -6 : 0);
-    if (t > 4.55) f2.style.opacity = t > 6.4 ? 1 : 0;
+        lerp(t > 3.15 ? 1.08 : 1, .3, drop2), t > 4.55 ? 0 : 1 - drop2 * (t > 4.25 ? 1 : 0), t > 3.3 && t < 4.25 ? -6 : 0);
     ring.style.opacity = eout(seg(t, 4.4, 4.6)) * (1 - seg(t, 5.7, 5.95));
     arc.setAttribute('stroke-dashoffset', 289 * (1 - eio(seg(t, 4.55, 5.6))));
     pk.style.opacity = eout(seg(t, 4.4, 4.6));
-    // done: the new app moves into the free grid slot (row 3, column 1)
     const mv = eio(seg(t, 5.7, 6.15));
-    const gx = 22 - 100, gy = 184 - 280;
-    pk.style.transform = `translate(${gx * mv}px,${gy * mv}px) scale(${lerp(.8, 1, mv)})`;
+    pk.style.transform = `translate(${(SLX - PKX) * mv}px,${(SLY - PKY) * mv}px) scale(${lerp(.8, 1, mv)})`;
     okBadge.style.opacity = t > 6.1 ? 1 : 0;
-    okBadge.style.transform = `translate(${gx}px,${gy}px) scale(${back(seg(t, 6.1, 6.4))})`;
+    okBadge.style.transform = `scale(${back(seg(t, 6.1, 6.4))})`;
     if (t > 4.6) { const k = eio(seg(t, 4.6, 5.3)); cx = lerp(px, 660, k); cy = lerp(py, 760, k); }
     set(cur, cx - 3, cy - 2, (t > .75 && t < 1.85) || (t > 3.15 && t < 4.25) ? .92 : 1);
   };
