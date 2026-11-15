@@ -827,7 +827,27 @@ static int fit_text_px(SDL_Renderer* r, const std::string& s, int px, int max_w,
 // ---------------------------------------------------------------------------
 // Platform icon generators (128px monochrome, downscaled for crispness)
 // ---------------------------------------------------------------------------
-static std::vector<uint8_t> shrink_rgba(const uint8_t* src, int sw, int sh, int dw, int dh);
+// Area-average downscale that weights colour by alpha, so transparent
+// pixels (black RGB) do not leave a dark halo around the shape.
+static std::vector<uint8_t> shrink_rgba(const uint8_t* src, int sw, int sh, int dw, int dh) {
+    std::vector<uint8_t> out(size_t(dw) * dh * 4);
+    for (int y = 0; y < dh; ++y) {
+        int y0 = int((long long)y * sh / dh), y1 = std::max(y0 + 1, int((long long)(y + 1) * sh / dh));
+        for (int x = 0; x < dw; ++x) {
+            int x0 = int((long long)x * sw / dw), x1 = std::max(x0 + 1, int((long long)(x + 1) * sw / dw));
+            uint64_t r = 0, g = 0, b = 0, a = 0, n = 0;
+            for (int sy = y0; sy < y1; ++sy)
+                for (int sx = x0; sx < x1; ++sx) {
+                    const uint8_t* p = src + (size_t(sy) * sw + sx) * 4;
+                    r += p[0] * p[3]; g += p[1] * p[3]; b += p[2] * p[3]; a += p[3]; ++n;
+                }
+            uint8_t* o = &out[(size_t(y) * dw + x) * 4];
+            if (a) { o[0] = uint8_t(r / a); o[1] = uint8_t(g / a); o[2] = uint8_t(b / a); }
+            o[3] = uint8_t(a / n);
+        }
+    }
+    return out;
+}
 static SDL_Texture* create_apple_icon(SDL_Renderer* renderer, int sz,
                                        uint8_t cr, uint8_t cg, uint8_t cb) {
     std::vector<uint8_t> rgba(sz * sz * 4, 0);
@@ -6965,27 +6985,6 @@ SDL_Texture* Renderer::mip_for_(MipChain& c, SDL_Texture* src, int sw, int sh, u
     return src;
 }
 
-// Area-average downscale that weights colour by alpha, so transparent
-// pixels (black RGB) do not leave a dark halo around the shape.
-static std::vector<uint8_t> shrink_rgba(const uint8_t* src, int sw, int sh, int dw, int dh) {
-    std::vector<uint8_t> out(size_t(dw) * dh * 4);
-    for (int y = 0; y < dh; ++y) {
-        int y0 = int((long long)y * sh / dh), y1 = std::max(y0 + 1, int((long long)(y + 1) * sh / dh));
-        for (int x = 0; x < dw; ++x) {
-            int x0 = int((long long)x * sw / dw), x1 = std::max(x0 + 1, int((long long)(x + 1) * sw / dw));
-            uint64_t r = 0, g = 0, b = 0, a = 0, n = 0;
-            for (int sy = y0; sy < y1; ++sy)
-                for (int sx = x0; sx < x1; ++sx) {
-                    const uint8_t* p = src + (size_t(sy) * sw + sx) * 4;
-                    r += p[0] * p[3]; g += p[1] * p[3]; b += p[2] * p[3]; a += p[3]; ++n;
-                }
-            uint8_t* o = &out[(size_t(y) * dw + x) * 4];
-            if (a) { o[0] = uint8_t(r / a); o[1] = uint8_t(g / a); o[2] = uint8_t(b / a); }
-            o[3] = uint8_t(a / n);
-        }
-    }
-    return out;
-}
 
 void Renderer::layout_side_buttons_() {
     for (int i = 0; i < kSideBtnCount; ++i) {
