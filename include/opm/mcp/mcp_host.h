@@ -47,6 +47,8 @@ public:
     virtual media::OcrJobResult ocr(const Frame& f) = 0;
     // True once the app is shutting down: long tool loops stop early.
     virtual bool closing() { return false; }
+    // Close PhoneMimi as if the user closed the window (after the reply is sent).
+    virtual void quit() {}
 };
 
 } // namespace opm::mcp

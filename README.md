@@ -69,7 +69,7 @@ command. It is off until you turn it on.
 | See and read | `list_devices`, `screenshot`, `ui_tree`, `ocr_screen`, `current_app` |
 | Control | `tap`, `long_press`, `double_tap`, `swipe`, `scroll`, `type_text`, `press_key`, `screen_power`, `wait_for` |
 | Apps and dev | `list_apps`, `launch_app`, `stop_app`, `clear_app_data`, `install_apk`, `uninstall_app`, `open_url`, `logcat`, `clear_logcat`, `push_file`, `pull_file`, `adb_shell` |
-| Connect | `connect_usb`, `connect_wifi` |
+| Connect | `connect_usb`, `connect_wifi`, `quit_app` |
 
 Android phones can be controlled over USB or Wi-Fi. iPhones (AirPlay) are
 view-only: `screenshot` and `ocr_screen` work, input does not.

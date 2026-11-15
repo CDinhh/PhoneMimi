@@ -820,6 +820,13 @@ ToolTable make_tools(Host& host) {
             return text_result(s, s.rfind("Mirroring", 0) != 0);
         });
 
+    add("quit_app", "Close PhoneMimi itself (for example before replacing its files). The MCP connection ends with it.",
+        {{"type", "object"}, {"properties", json::object()}},
+        [](Ctx& c, const json&) {
+            c.host.quit();
+            return text_result("PhoneMimi is closing.");
+        });
+
     add("connect_wifi", "Connect and mirror an Android phone over Wi-Fi. address = ip:port from the phone's Wireless debugging screen; without it, retries phones connected earlier. The phone must have been paired once in PhoneMimi.",
         {{"type", "object"}, {"properties", {{"address", p_str("ip:port")}}}},
         [](Ctx& c, const json& a) {

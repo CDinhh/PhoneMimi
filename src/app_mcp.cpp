@@ -5,7 +5,10 @@
 #include <opm/media/ocr.h>
 #include <opm/settings.h>
 
+#include <chrono>
 #include <thread>
+
+#include <SDL.h>
 
 namespace opm {
 
@@ -181,6 +184,16 @@ std::string App::connect_wifi(const std::string& addr) {
     (void)addr;
     return "Android support is not built in.";
 #endif
+}
+
+void App::quit() {
+    // Give the HTTP reply a moment to leave, then close like the window's X.
+    std::thread([] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        SDL_Event e{};
+        e.type = SDL_QUIT;
+        SDL_PushEvent(&e);
+    }).detach();
 }
 
 media::OcrJobResult App::ocr(const mcp::Frame& f) {

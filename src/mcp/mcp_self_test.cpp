@@ -222,6 +222,8 @@ struct FakeHost : Host {
     bool is_closing = false;
     Frame fr;
     bool closing() override { return is_closing; }
+    int quits = 0;
+    void quit() override { ++quits; }
 
     std::vector<DeviceRow> devices() override { return rows; }
     bool frame(const std::string& id, Frame* out, int) override {
@@ -265,7 +267,8 @@ void test_tools() {
     h.fr.rgba.assign(size_t(1080) * 2400 * 4, 128);
     h.adb_replies["exec-out uiautomator dump /dev/tty"] = {0, kDump};
     ToolTable t = make_tools(h);
-    CHECK(t.size() == 28);
+    CHECK(t.size() == 29);
+    CHECK(!is_err(tool(t, "quit_app", json::object())) && h.quits == 1);
 
     json r = tool(t, "tap", {{"x", 288}, {"y", 640}});
     CHECK(!is_err(r) && h.sent.size() == 2);

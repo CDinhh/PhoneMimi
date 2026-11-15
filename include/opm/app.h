@@ -197,6 +197,7 @@ private:
     std::string connect_wifi(const std::string& addr) override;
     media::OcrJobResult ocr(const mcp::Frame& f) override;
     bool closing() override { return mcp_closing_.load(); }
+    void quit() override;
     std::atomic<bool> mcp_closing_{false};
     // Latest switch state; the worker thread applies whatever is newest.
     bool mcp_want_on_ = false;
