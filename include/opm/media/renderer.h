@@ -384,13 +384,18 @@ private:
         int w[kLevels] = {}, h[kLevels] = {};
         int built = 0;
         uint64_t serial = ~0ull;
+        // Final 2x2-supersampled copy at the exact draw size (video only).
+        SDL_Texture* out = nullptr;
+        int out_w = 0, out_h = 0;
+        uint64_t out_serial = ~0ull;
     };
     MipChain video_mip_, frame_mip_;
     uint64_t video_frame_serial_ = 0, frame_draw_serial_ = 0;
     SDL_Texture* mip_for_(MipChain& c, SDL_Texture* src, int sw, int sh, uint64_t serial,
-                          int dst_w, int dst_h);
+                          int dst_w, int dst_h, bool supersample = false);
     SDL_Texture* video_tex_for_(int dst_w, int dst_h) {
-        return mip_for_(video_mip_, texture_, tex_width_, tex_height_, video_frame_serial_, dst_w, dst_h);
+        return mip_for_(video_mip_, texture_, tex_width_, tex_height_, video_frame_serial_, dst_w, dst_h,
+                        /*supersample=*/true);
     }
     // The penguin pre-shrunk on the CPU to the size it is drawn at.
     std::vector<uint8_t> logo_rgba_;

@@ -1258,6 +1258,9 @@ bool Renderer::init(const std::string& title, int /*width*/, int /*height*/) {
         };
         version_lines_.push_back(make_ver(L"Version History", 40, 255, 255, 255));
         version_lines_.push_back({nullptr, 0, 0}); // spacer
+        version_lines_.push_back(make_ver(L"16.11.2026 \u2013 3.4.3", 34, 200, 200, 255));
+        version_lines_.push_back(make_desc(L"Sharper mirrored video: no more over-shrinking, 4 samples per pixel"));
+        version_lines_.push_back({nullptr, 0, 0});
         version_lines_.push_back(make_ver(L"15.11.2026 \u2013 3.4.2", 34, 200, 200, 255));
         version_lines_.push_back(make_desc(L"Sharper phone frame edges and penguin logo in small windows"));
         version_lines_.push_back({nullptr, 0, 0});
@@ -1335,8 +1338,10 @@ void Renderer::shutdown() {
     if (android_icon_tex_) { SDL_DestroyTexture(android_icon_tex_); android_icon_tex_ = nullptr; }
     if (logo_tex_) { SDL_DestroyTexture(logo_tex_); logo_tex_ = nullptr; }
     if (logo_small_) { SDL_DestroyTexture(logo_small_); logo_small_ = nullptr; }
-    for (MipChain* c : {&video_mip_, &frame_mip_})
+    for (MipChain* c : {&video_mip_, &frame_mip_}) {
         for (auto& t : c->tex) if (t) { SDL_DestroyTexture(t); t = nullptr; }
+        if (c->out) { SDL_DestroyTexture(c->out); c->out = nullptr; }
+    }
     for (auto& l : info_lines_) { if (l.tex) SDL_DestroyTexture(l.tex); }
     info_lines_.clear();
     for (auto& l : version_lines_) { if (l.tex) SDL_DestroyTexture(l.tex); }
@@ -6938,20 +6943,26 @@ void Renderer::android_type_diff_(const std::string& target) {
 }
 
 // A texture drawn far smaller than it is (the phone sends 1080 px into a
-// ~250 px window; the frame is built at the video's size) loses pixels in
+// ~290 px window; the frame is built at the video's size) loses pixels in
 // one bilinear step: thin text and curved edges turn jagged. So it is first
-// halved on the GPU (each halving averages 2x2 pixels, like a mipmap) until
-// it is within 1.6x of the size it is drawn at. Levels are rebuilt when
-// `serial` changes (a new video frame; every draw for the frame, which is
-// cheap and survives a lost GPU device).
+// halved on the GPU (each halving averages 2x2 pixels, like a mipmap) while
+// the half is still at least the draw size; it is never halved below it,
+// which would have to be stretched back up and blur. With `supersample`
+// the last step (under 2x) is drawn into a target of the exact draw size
+// from 2x2 sub-pixel samples, close to a true area average. Levels are
+// rebuilt when `serial` changes (a new video frame; every draw for the
+// frame, which is cheap and survives a lost GPU device).
 SDL_Texture* Renderer::mip_for_(MipChain& c, SDL_Texture* src, int sw, int sh, uint64_t serial,
-                                int dst_w, int dst_h) {
+                                int dst_w, int dst_h, bool supersample) {
     if (!src || dst_w <= 0 || dst_h <= 0) return src;
     int levels = 0;
-    for (int w = sw, h = sh; levels < MipChain::kLevels && w >= dst_w * 1.6f && h >= dst_h * 1.6f;
+    // Without supersampling (the frame, which has transparent edges) stop
+    // within 1.6x and let one bilinear step finish: soft but never jagged.
+    for (int w = sw, h = sh; levels < MipChain::kLevels &&
+         (supersample ? (w / 2 >= dst_w && h / 2 >= dst_h) : (w >= dst_w * 1.6f && h >= dst_h * 1.6f));
          w /= 2, h /= 2)
         ++levels;
-    if (levels == 0) return src;
+    if (levels == 0 && !(supersample && sw > dst_w && sh > dst_h)) return src;
     if (c.serial != serial) c.built = 0;
     SDL_BlendMode draw_bm = SDL_BLENDMODE_NONE;
     SDL_GetTextureBlendMode(src, &draw_bm);   // how the result is drawn
@@ -6982,7 +6993,41 @@ SDL_Texture* Renderer::mip_for_(MipChain& c, SDL_Texture* src, int sw, int sh, u
         sw = lw; sh = lh;
     }
     c.serial = serial;
-    return src;
+    if (!supersample || (sw == dst_w && sh == dst_h)) return src;
+
+    if (!c.out || c.out_w != dst_w || c.out_h != dst_h) {
+        if (c.out) SDL_DestroyTexture(c.out);
+        c.out = SDL_CreateTexture(sdl_renderer_, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET,
+                                  dst_w, dst_h);
+        c.out_w = dst_w; c.out_h = dst_h;
+        c.out_serial = ~0ull;
+        if (!c.out) return src;
+        SDL_SetTextureScaleMode(c.out, SDL_ScaleModeNearest);   // drawn 1:1
+    }
+    if (c.out_serial != serial) {
+        // Running average of four copies shifted by a quarter pixel: the
+        // first replaces, the next ones blend in at 1/2, 1/3, 1/4.
+        static const float kOff[4][2] = {{-0.25f, -0.25f}, {0.25f, -0.25f}, {-0.25f, 0.25f}, {0.25f, 0.25f}};
+        static const Uint8 kAlpha[4] = {255, 128, 85, 64};
+        SDL_Texture* prev = SDL_GetRenderTarget(sdl_renderer_);
+        SDL_BlendMode bm = SDL_BLENDMODE_NONE;
+        SDL_GetTextureBlendMode(src, &bm);
+        Uint8 am = 255;
+        SDL_GetTextureAlphaMod(src, &am);
+        SDL_SetRenderTarget(sdl_renderer_, c.out);
+        for (int i = 0; i < 4; ++i) {
+            SDL_SetTextureBlendMode(src, i == 0 ? SDL_BLENDMODE_NONE : SDL_BLENDMODE_BLEND);
+            SDL_SetTextureAlphaMod(src, kAlpha[i]);
+            SDL_FRect d = {kOff[i][0], kOff[i][1], (float)dst_w, (float)dst_h};
+            SDL_RenderCopyF(sdl_renderer_, src, nullptr, &d);
+        }
+        SDL_SetRenderTarget(sdl_renderer_, prev);
+        SDL_SetTextureBlendMode(src, bm);
+        SDL_SetTextureAlphaMod(src, am);
+        c.out_serial = serial;
+    }
+    SDL_SetTextureBlendMode(c.out, draw_bm);
+    return c.out;
 }
 
 
