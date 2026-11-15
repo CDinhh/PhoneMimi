@@ -79,6 +79,7 @@ public:
                                   int* out_w, int* out_h);
 
     bool is_generated() const { return texture_ != nullptr; }
+    SDL_Texture* texture() const { return texture_; }
 
 private:
     void draw_rounded_rect(uint32_t* pixels, int img_w, int img_h,

@@ -1128,6 +1128,7 @@ bool Renderer::init(const std::string& title, int /*width*/, int /*height*/) {
                 SDL_SetTextureBlendMode(logo_tex_, SDL_BLENDMODE_BLEND);
                 SDL_UpdateTexture(logo_tex_, nullptr, logo, lw * 4);
                 logo_w_ = lw; logo_h_ = lh;
+                logo_rgba_.assign(logo, logo + size_t(lw) * lh * 4);
             }
             stbi_image_free(logo);
         }
@@ -1236,6 +1237,9 @@ bool Renderer::init(const std::string& title, int /*width*/, int /*height*/) {
         };
         version_lines_.push_back(make_ver(L"Version History", 40, 255, 255, 255));
         version_lines_.push_back({nullptr, 0, 0}); // spacer
+        version_lines_.push_back(make_ver(L"15.11.2026 \u2013 3.4.2", 34, 200, 200, 255));
+        version_lines_.push_back(make_desc(L"Sharper phone frame edges and penguin logo in small windows"));
+        version_lines_.push_back({nullptr, 0, 0});
         version_lines_.push_back(make_ver(L"15.11.2026 \u2013 3.4.1", 34, 200, 200, 255));
         version_lines_.push_back(make_desc(L"MCP: screenshots always show the latest screen, steadier reconnects over Wi-Fi"));
         version_lines_.push_back({nullptr, 0, 0});
@@ -1309,6 +1313,9 @@ void Renderer::shutdown() {
     if (ios_icon_tex_) { SDL_DestroyTexture(ios_icon_tex_); ios_icon_tex_ = nullptr; }
     if (android_icon_tex_) { SDL_DestroyTexture(android_icon_tex_); android_icon_tex_ = nullptr; }
     if (logo_tex_) { SDL_DestroyTexture(logo_tex_); logo_tex_ = nullptr; }
+    if (logo_small_) { SDL_DestroyTexture(logo_small_); logo_small_ = nullptr; }
+    for (MipChain* c : {&video_mip_, &frame_mip_})
+        for (auto& t : c->tex) if (t) { SDL_DestroyTexture(t); t = nullptr; }
     for (auto& l : info_lines_) { if (l.tex) SDL_DestroyTexture(l.tex); }
     info_lines_.clear();
     for (auto& l : version_lines_) { if (l.tex) SDL_DestroyTexture(l.tex); }
@@ -3416,8 +3423,24 @@ void Renderer::render_frame() {
             if (logo_tex_ && logo_w_ > 0) {
                 float bob = std::sin(ms / 3200.0f * 6.2831853f);
                 int lw = core * 137 / 100, lh = lw * logo_h_ / logo_w_;
+                SDL_Texture* lt = logo_tex_;
+                if (lw > 0 && lh > 0 && lw < logo_w_ && !logo_rgba_.empty()) {
+                    if (!logo_small_ || logo_small_w_ != lw || logo_small_h_ != lh) {
+                        if (logo_small_) SDL_DestroyTexture(logo_small_);
+                        auto px = shrink_rgba(logo_rgba_.data(), logo_w_, logo_h_, lw, lh);
+                        logo_small_ = SDL_CreateTexture(sdl_renderer_, SDL_PIXELFORMAT_RGBA32,
+                                                        SDL_TEXTUREACCESS_STATIC, lw, lh);
+                        if (logo_small_) {
+                            SDL_SetTextureBlendMode(logo_small_, SDL_BLENDMODE_BLEND);
+                            SDL_SetTextureScaleMode(logo_small_, SDL_ScaleModeLinear);
+                            SDL_UpdateTexture(logo_small_, nullptr, px.data(), lw * 4);
+                        }
+                        logo_small_w_ = lw; logo_small_h_ = lh;
+                    }
+                    if (logo_small_) lt = logo_small_;
+                }
                 SDL_Rect d = {mcx - lw / 2, mcy - lh / 2 - (int)(bob * u / 48.0f), lw, lh};
-                SDL_RenderCopyEx(sdl_renderer_, logo_tex_, nullptr, &d, bob * 2.0, nullptr, SDL_FLIP_NONE);
+                SDL_RenderCopyEx(sdl_renderer_, lt, nullptr, &d, bob * 2.0, nullptr, SDL_FLIP_NONE);
             }
 
             // Wordmark + "Waiting for a phone" with three accent dots.
@@ -3509,7 +3532,13 @@ void Renderer::render_frame() {
     int bezel_hover_ax = 0, bezel_hover_ay = 0;
 
     // Phone frame overlay (on top — covers island and panel edges)
-    phone_frame_.render(sdl_renderer_, frame_dst_x_, frame_dst_y_, frame_dst_w_, frame_dst_h_);
+    if (SDL_Texture* ft = phone_frame_.texture()) {
+        SDL_Rect fd = {frame_dst_x_, frame_dst_y_, frame_dst_w_, frame_dst_h_};
+        SDL_RenderCopy(sdl_renderer_,
+                       mip_for_(frame_mip_, ft, phone_frame_.frame_width(), phone_frame_.frame_height(),
+                                ++frame_draw_serial_, fd.w, fd.h),
+                       nullptr, &fd);
+    }
     draw_side_buttons_(bezel_hover_key, bezel_hover_text, bezel_hover_ax, bezel_hover_ay);
 
     // Recording HUD — countdown digit while waiting, "REC + elapsed" chip
@@ -6887,49 +6916,74 @@ void Renderer::android_type_diff_(const std::string& target) {
     android_ime_shown_ = target;
 }
 
-// The phone usually sends far more pixels than the window shows (1080 px
-// wide into ~450). One bilinear step that large skips source pixels and
-// thin text turns jagged, so the frame is first halved on the GPU (each
-// halving averages 2x2 pixels, like a mipmap) until it is within 1.6x of
-// the size it is drawn at. Levels are rebuilt once per new frame.
-SDL_Texture* Renderer::video_tex_for_(int dst_w, int dst_h) {
-    if (!texture_ || dst_w <= 0 || dst_h <= 0) return texture_;
+// A texture drawn far smaller than it is (the phone sends 1080 px into a
+// ~250 px window; the frame is built at the video's size) loses pixels in
+// one bilinear step: thin text and curved edges turn jagged. So it is first
+// halved on the GPU (each halving averages 2x2 pixels, like a mipmap) until
+// it is within 1.6x of the size it is drawn at. Levels are rebuilt when
+// `serial` changes (a new video frame; every draw for the frame, which is
+// cheap and survives a lost GPU device).
+SDL_Texture* Renderer::mip_for_(MipChain& c, SDL_Texture* src, int sw, int sh, uint64_t serial,
+                                int dst_w, int dst_h) {
+    if (!src || dst_w <= 0 || dst_h <= 0) return src;
     int levels = 0;
-    for (int w = tex_width_, h = tex_height_;
-         levels < kVideoMips && w >= dst_w * 1.6f && h >= dst_h * 1.6f;
+    for (int w = sw, h = sh; levels < MipChain::kLevels && w >= dst_w * 1.6f && h >= dst_h * 1.6f;
          w /= 2, h /= 2)
         ++levels;
-    if (levels == 0) return texture_;
-    if (video_mips_serial_ != video_frame_serial_) video_mips_built_ = 0;
-    SDL_Texture* src = texture_;
-    int sw = tex_width_, sh = tex_height_;
+    if (levels == 0) return src;
+    if (c.serial != serial) c.built = 0;
+    SDL_BlendMode draw_bm = SDL_BLENDMODE_NONE;
+    SDL_GetTextureBlendMode(src, &draw_bm);   // how the result is drawn
     for (int i = 0; i < levels; ++i) {
         int lw = std::max(1, sw / 2), lh = std::max(1, sh / 2);
-        if (!video_mips_[i] || video_mip_w_[i] != lw || video_mip_h_[i] != lh) {
-            if (video_mips_[i]) SDL_DestroyTexture(video_mips_[i]);
-            video_mips_[i] = SDL_CreateTexture(sdl_renderer_, SDL_PIXELFORMAT_RGBA32,
-                                               SDL_TEXTUREACCESS_TARGET, lw, lh);
-            video_mip_w_[i] = lw; video_mip_h_[i] = lh;
-            video_mips_built_ = std::min(video_mips_built_, i);
-            if (!video_mips_[i]) return src;   // no render targets: plain bilinear
-            SDL_SetTextureScaleMode(video_mips_[i], SDL_ScaleModeLinear);
+        if (!c.tex[i] || c.w[i] != lw || c.h[i] != lh) {
+            if (c.tex[i]) SDL_DestroyTexture(c.tex[i]);
+            c.tex[i] = SDL_CreateTexture(sdl_renderer_, SDL_PIXELFORMAT_RGBA32,
+                                         SDL_TEXTUREACCESS_TARGET, lw, lh);
+            c.w[i] = lw; c.h[i] = lh;
+            c.built = std::min(c.built, i);
+            if (!c.tex[i]) return src;   // no render targets: plain bilinear
+            SDL_SetTextureScaleMode(c.tex[i], SDL_ScaleModeLinear);
         }
-        if (i >= video_mips_built_) {
+        if (i >= c.built) {
             SDL_Texture* prev = SDL_GetRenderTarget(sdl_renderer_);
             SDL_BlendMode bm = SDL_BLENDMODE_NONE;
             SDL_GetTextureBlendMode(src, &bm);
             SDL_SetTextureBlendMode(src, SDL_BLENDMODE_NONE);
-            SDL_SetRenderTarget(sdl_renderer_, video_mips_[i]);
+            SDL_SetRenderTarget(sdl_renderer_, c.tex[i]);
             SDL_RenderCopy(sdl_renderer_, src, nullptr, nullptr);
             SDL_SetRenderTarget(sdl_renderer_, prev);
             SDL_SetTextureBlendMode(src, bm);
-            video_mips_built_ = i + 1;
+            c.built = i + 1;
         }
-        src = video_mips_[i];
+        SDL_SetTextureBlendMode(c.tex[i], draw_bm);
+        src = c.tex[i];
         sw = lw; sh = lh;
     }
-    video_mips_serial_ = video_frame_serial_;
+    c.serial = serial;
     return src;
+}
+
+// Area-average downscale that weights colour by alpha, so transparent
+// pixels (black RGB) do not leave a dark halo around the shape.
+static std::vector<uint8_t> shrink_rgba(const uint8_t* src, int sw, int sh, int dw, int dh) {
+    std::vector<uint8_t> out(size_t(dw) * dh * 4);
+    for (int y = 0; y < dh; ++y) {
+        int y0 = int((long long)y * sh / dh), y1 = std::max(y0 + 1, int((long long)(y + 1) * sh / dh));
+        for (int x = 0; x < dw; ++x) {
+            int x0 = int((long long)x * sw / dw), x1 = std::max(x0 + 1, int((long long)(x + 1) * sw / dw));
+            uint64_t r = 0, g = 0, b = 0, a = 0, n = 0;
+            for (int sy = y0; sy < y1; ++sy)
+                for (int sx = x0; sx < x1; ++sx) {
+                    const uint8_t* p = src + (size_t(sy) * sw + sx) * 4;
+                    r += p[0] * p[3]; g += p[1] * p[3]; b += p[2] * p[3]; a += p[3]; ++n;
+                }
+            uint8_t* o = &out[(size_t(y) * dw + x) * 4];
+            if (a) { o[0] = uint8_t(r / a); o[1] = uint8_t(g / a); o[2] = uint8_t(b / a); }
+            o[3] = uint8_t(a / n);
+        }
+    }
+    return out;
 }
 
 void Renderer::layout_side_buttons_() {

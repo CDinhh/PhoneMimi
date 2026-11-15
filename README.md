@@ -110,6 +110,7 @@ and an MSI.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **3.4.2** | 15.11.2026 | Sharper phone frame edges and penguin logo when the window is small. |
 | **3.4.1** | 15.11.2026 | MCP: screenshots always show the latest screen, `connect_wifi` keeps a working phone, steadier `adb devices` and UI dumps. |
 | **3.4.0** | 15.11.2026 | Claude Code can see and drive your phones: built-in MCP server (Settings > Phone). |
 | **3.3.6** | 15.11.2026 | New look: Lucide icons, Plus Jakarta Sans, six accent colours, new switches and segmented choices, redesigned Add Android panel, penguin waiting screen. |

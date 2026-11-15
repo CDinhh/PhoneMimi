@@ -376,13 +376,26 @@ private:
     SDL_Texture* ios_icon_tex_ = nullptr;
     int ios_icon_sz_ = 0;
     SDL_Texture* android_icon_tex_ = nullptr;
-    // Downscaled copies of the video frame (see video_tex_for_).
-    static constexpr int kVideoMips = 4;
-    SDL_Texture* video_mips_[kVideoMips] = {};
-    int video_mip_w_[kVideoMips] = {}, video_mip_h_[kVideoMips] = {};
-    int video_mips_built_ = 0;
-    uint64_t video_frame_serial_ = 0, video_mips_serial_ = ~0ull;
-    SDL_Texture* video_tex_for_(int dst_w, int dst_h);
+    // GPU-halved copies of a texture drawn much smaller than its size
+    // (see mip_for_): the video and the phone frame.
+    struct MipChain {
+        static constexpr int kLevels = 4;
+        SDL_Texture* tex[kLevels] = {};
+        int w[kLevels] = {}, h[kLevels] = {};
+        int built = 0;
+        uint64_t serial = ~0ull;
+    };
+    MipChain video_mip_, frame_mip_;
+    uint64_t video_frame_serial_ = 0, frame_draw_serial_ = 0;
+    SDL_Texture* mip_for_(MipChain& c, SDL_Texture* src, int sw, int sh, uint64_t serial,
+                          int dst_w, int dst_h);
+    SDL_Texture* video_tex_for_(int dst_w, int dst_h) {
+        return mip_for_(video_mip_, texture_, tex_width_, tex_height_, video_frame_serial_, dst_w, dst_h);
+    }
+    // The penguin pre-shrunk on the CPU to the size it is drawn at.
+    std::vector<uint8_t> logo_rgba_;
+    SDL_Texture* logo_small_ = nullptr;
+    int logo_small_w_ = 0, logo_small_h_ = 0;
     SDL_Texture* logo_tex_ = nullptr;   // penguin, decoded from the exe (RCDATA 210)
     int logo_w_ = 0, logo_h_ = 0;
     int android_icon_sz_ = 0;
