@@ -117,8 +117,16 @@ std::string handle_jsonrpc(const std::string& body, const ToolTable& tools) {
     if (msg.is_array()) return rpc_error(nullptr, -32600, "Batches are not supported").dump();
     // A message without an id is a notification (or a response): no reply.
     if (msg.is_object() && !msg.contains("id")) return "";
+    json id = msg.is_object() && msg.contains("id") ? msg["id"] : json();
+    json reply;
+    try {
+        reply = dispatch(msg, tools);
+    } catch (const std::exception& e) {
+        // e.g. "name": 5 -> type_error from json::value(); must not kill the app.
+        reply = rpc_error(id, -32602, std::string("Invalid params: ") + e.what());
+    }
     // Invalid UTF-8 in tool output must not throw out of dump().
-    return dispatch(msg, tools).dump(-1, ' ', false, json::error_handler_t::replace);
+    return reply.dump(-1, ' ', false, json::error_handler_t::replace);
 }
 
 HttpResponse handle_http(const HttpRequest& req, const std::string& token,

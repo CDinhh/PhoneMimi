@@ -233,6 +233,9 @@ void App::android_drop_sessions_for_ip_(const std::string& ip) {
                 std::cout << "[App] Replacing existing Android session for "
                           << s->serial << "\n";
                 s->receiver->stop();
+#ifdef ENABLE_MCP
+                frame_tap_.drop(s->serial);
+#endif
                 adb_.disconnect(s->serial);
             }
         }

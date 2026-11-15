@@ -611,8 +611,14 @@ void App::shutdown() {
     }
     running_.store(false);
 #ifdef ENABLE_MCP
-    // First, so no tool call reaches a half torn-down app.
+    // First, so no tool call reaches a half torn-down app: tool loops see
+    // closing(), adb calls in flight are killed, then the server waits for
+    // its workers.
     renderer_.set_mcp_handler(nullptr);
+    mcp_closing_ = true;
+#ifdef ENABLE_ANDROID
+    adb_.cancel_all();
+#endif
     {
         std::lock_guard lk(mcp_mutex_);
         if (mcp_) mcp_->stop();

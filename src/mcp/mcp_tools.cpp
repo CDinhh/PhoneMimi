@@ -6,6 +6,8 @@
 #include <cstdio>
 #include <filesystem>
 #include <iostream>
+#include <map>
+#include <mutex>
 #include <optional>
 #include <sstream>
 #include <thread>
@@ -72,6 +74,7 @@ json p_int(const char* d) { return {{"type", "integer"}, {"description", d}}; }
 json p_bool(const char* d) { return {{"type", "boolean"}, {"description", d}}; }
 
 struct Ctx {
+    explicit Ctx(Host& h) : host(h) {}
     Host& host;
 
     // Picks the device a call targets, or sets *err.
@@ -122,19 +125,59 @@ struct Ctx {
         return host.adb(d.id, args, out, timeout_ms);
     }
 
-    // uiautomator dump, with the /sdcard fallback.
-    bool ui_dump(const DeviceRow& d, std::vector<UiNode>* nodes, std::string* err) {
+    std::mutex wm_mu;
+    std::map<std::string, Size> wm_sizes;   // natural display size per device
+
+    // Display size in device pixels for the current rotation. The dump's
+    // root is only the focused window (a dialog is smaller than the screen),
+    // so it is the last resort.
+    Size screen_size(const DeviceRow& d, const std::string& xml, const std::vector<UiNode>& nodes) {
+        Size nat;
+        {
+            std::lock_guard lk(wm_mu);
+            auto it = wm_sizes.find(d.id);
+            if (it != wm_sizes.end()) nat = it->second;
+        }
+        if (nat.w <= 0) {
+            std::string out;
+            adb(d, {"shell", "wm", "size"}, &out, 5000);
+            nat = parse_wm_size(out);
+            if (nat.w > 0) {
+                std::lock_guard lk(wm_mu);
+                wm_sizes[d.id] = nat;
+            }
+        }
+        if (nat.w <= 0) return ui_root_size(nodes);
+        int rot = parse_ui_rotation(xml);
+        bool portrait = nat.w < nat.h;
+        Size s{std::min(nat.w, nat.h), std::max(nat.w, nat.h)};
+        if (!portrait) std::swap(s.w, s.h);
+        if (rot % 2) std::swap(s.w, s.h);
+        return s;
+    }
+
+    // uiautomator dump, with the /sdcard fallback. `screen` gets the display
+    // size the bounds refer to. budget_ms caps each adb step.
+    bool ui_dump(const DeviceRow& d, std::vector<UiNode>* nodes, std::string* err,
+                 Size* screen = nullptr, int budget_ms = 20000) {
+        int step = std::clamp(budget_ms, 1000, 20000);
         std::string xml;
-        adb(d, {"exec-out", "uiautomator", "dump", "/dev/tty"}, &xml, 20000);
-        if (parse_ui_dump(xml, nodes, err)) return true;
-        std::string tmp;
-        adb(d, {"shell", "uiautomator", "dump", "/sdcard/pm_ui.xml"}, &tmp, 20000);
-        xml.clear();
-        adb(d, {"exec-out", "cat", "/sdcard/pm_ui.xml"}, &xml, 10000);
-        if (parse_ui_dump(xml, nodes, err)) return true;
-        *err = "uiautomator failed (" + *err +
-               "). The screen may be animating or playing video: retry, or use ocr_screen.";
-        return false;
+        adb(d, {"exec-out", "uiautomator", "dump", "/dev/tty"}, &xml, step);
+        bool ok = parse_ui_dump(xml, nodes, err);
+        if (!ok && !host.closing()) {
+            std::string tmp;
+            adb(d, {"shell", "uiautomator", "dump", "/sdcard/pm_ui.xml"}, &tmp, step);
+            xml.clear();
+            adb(d, {"exec-out", "cat", "/sdcard/pm_ui.xml"}, &xml, std::min(step, 10000));
+            ok = parse_ui_dump(xml, nodes, err);
+        }
+        if (!ok) {
+            *err = "uiautomator failed (" + *err +
+                   "). The screen may be animating or playing video: retry, or use ocr_screen.";
+            return false;
+        }
+        if (screen) *screen = screen_size(d, xml, *nodes);
+        return true;
     }
 
     // Frame size of a mirrored device (0x0 if none).
@@ -144,12 +187,11 @@ struct Ctx {
         return {f.w, f.h};
     }
 
-    // Tap space: from the stream if there is one, else from the UI root.
-    Size shot_for(const DeviceRow& d, const std::vector<UiNode>* nodes) {
+    // Tap space: from the stream if there is one, else from the screen size.
+    Size shot_for(const DeviceRow& d, Size screen) {
         Size fs = frame_size(d);
         if (fs.w > 0) return shot_size(fs);
-        if (nodes) return shot_size(ui_root_size(*nodes));
-        return {};
+        return shot_size(screen);
     }
 
     std::string current_app(const DeviceRow& d) {
@@ -217,7 +259,8 @@ struct Ctx {
             return true;
         }
         std::vector<UiNode> nodes;
-        if (!ui_dump(d, &nodes, err)) return false;
+        Size screen;
+        if (!ui_dump(d, &nodes, err, &screen)) return false;
         auto hits = find_nodes(nodes, sel);
         int idx = int_arg(a, "index", 0);
         if (hits.empty() || idx < 0 || idx >= (int)hits.size()) {
@@ -230,17 +273,16 @@ struct Ctx {
                 cands += "\n  " + std::string(nd.text.empty() ? "" : "\"" + nd.text + "\" ") +
                          (nd.desc.empty() ? "" : "desc=\"" + nd.desc + "\" ") +
                          (nd.id.empty() ? "" : "id=" + nd.id + " ") +
-                         "at (" + std::to_string(map_x((nd.bounds.l + nd.bounds.r) / 2, ui_root_size(nodes), shot)) +
-                         "," + std::to_string(map_y((nd.bounds.t + nd.bounds.b) / 2, ui_root_size(nodes), shot)) + ")";
+                         "at (" + std::to_string(map_x((nd.bounds.l + nd.bounds.r) / 2, screen, shot)) +
+                         "," + std::to_string(map_y((nd.bounds.t + nd.bounds.b) / 2, screen, shot)) + ")";
             }
             *err = hits.empty() ? "No element matches." : "Only " + std::to_string(hits.size()) + " matches.";
             if (!cands.empty()) *err += " Some elements on screen:" + cands;
             return false;
         }
         const UiNode& n = *hits[idx];
-        Size root = ui_root_size(nodes);
-        *fx = map_x((n.bounds.l + n.bounds.r) / 2, root, fs);
-        *fy = map_y((n.bounds.t + n.bounds.b) / 2, root, fs);
+        *fx = map_x((n.bounds.l + n.bounds.r) / 2, screen, fs);
+        *fy = map_y((n.bounds.t + n.bounds.b) / 2, screen, fs);
         *what = n.cls + (n.text.empty() ? "" : " \"" + n.text + "\"") +
                 (n.id.empty() ? "" : " id=" + n.id);
         if (hits.size() > 1)
@@ -297,7 +339,7 @@ std::string adb_fail(int rc, const std::string& out, int timeout_ms) {
 } // namespace
 
 ToolTable make_tools(Host& host) {
-    auto ctx = std::make_shared<Ctx>(Ctx{host});
+    auto ctx = std::make_shared<Ctx>(host);
     ToolTable t;
     auto add = [&](const char* name, const char* desc, json sch,
                    std::function<ToolResult(Ctx&, const json&)> fn) {
@@ -320,7 +362,8 @@ ToolTable make_tools(Host& host) {
                 s += r.id + " | " + r.name + " | " + r.kind + (r.shown ? " | shown" : "") +
                      (r.mirrored ? " | mirrored" : " | not mirrored") +
                      (r.control ? " | control" : "") +
-                     (shot.w ? " | " + std::to_string(shot.w) + "x" + std::to_string(shot.h) : "") + "\n";
+                     (shot.w ? " | " + std::to_string(shot.w) + "x" + std::to_string(shot.h) +
+                                   (shot.w > shot.h ? " landscape" : " portrait") : "") + "\n";
             }
             return text_result(s);
         });
@@ -332,7 +375,7 @@ ToolTable make_tools(Host& host) {
             auto d = c.pick(a, false, &e);
             if (!d) return err(e);
             Frame f;
-            if (!c.host.frame(d->id, &f, 250))
+            if (!d->mirrored || !c.host.frame(d->id, &f, 250))
                 return err(d->kind == "android"
                                ? "No video from " + d->id + ". Call connect_usb / connect_wifi, or ask the user to mirror it."
                                : "No video from the iPhone yet.");
@@ -357,11 +400,12 @@ ToolTable make_tools(Host& host) {
             auto d = c.pick(a, true, &e);
             if (!d) return err(e);
             std::vector<UiNode> nodes;
-            if (!c.ui_dump(*d, &nodes, &e)) return err(e);
-            Size shot = c.shot_for(*d, &nodes);
+            Size screen;
+            if (!c.ui_dump(*d, &nodes, &e, &screen)) return err(e);
+            Size shot = c.shot_for(*d, screen);
             return text_result("App: " + c.current_app(*d) + "\nScreen: " + std::to_string(shot.w) +
                                "x" + std::to_string(shot.h) + "\n" +
-                               truncate_output(format_ui_tree(nodes, shot)));
+                               truncate_output(format_ui_tree(nodes, screen, shot)));
         });
 
     add("ocr_screen", "Read the text on screen with Windows OCR. Works on iPhone too. Lines come with [x,y,w,h] in screenshot pixels.",
@@ -551,21 +595,27 @@ ToolTable make_tools(Host& host) {
             if (!d) return err(e);
             Selector sel{str_arg(a, "text"), str_arg(a, "id"), str_arg(a, "desc"), false};
             if (sel.text.empty() && sel.id.empty() && sel.desc.empty()) return err("Give text, id or desc.");
+            if (d->kind != "android" && sel.text.empty())
+                return err("On an iPhone wait_for can only look for text (it uses OCR).");
             bool gone = bool_arg(a, "gone", false);
             int timeout = std::clamp(int_arg(a, "timeout_ms", 10000), 0, 60000);
             auto t0 = std::chrono::steady_clock::now();
             int ui_fails = 0;
             for (;;) {
-                bool present = false;
+                bool present = false, checked = false;
                 std::vector<UiNode> nodes;
                 std::string ue;
-                if (d->kind == "android" && ui_fails < 2 && c.ui_dump(*d, &nodes, &ue)) {
+                int left = timeout - int(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                             std::chrono::steady_clock::now() - t0).count());
+                if (d->kind == "android" && ui_fails < 2 && c.ui_dump(*d, &nodes, &ue, nullptr, left)) {
                     present = !find_nodes(nodes, sel).empty();
+                    checked = true;
                 } else {
                     if (d->kind == "android") ++ui_fails;
                     Frame f;
                     if (!sel.text.empty() && c.host.frame(d->id, &f, 0)) {
                         auto r = c.host.ocr(f);
+                        checked = r.ok;
                         for (auto& l : r.lines) {
                             std::string lt = l.text, w = sel.text;
                             for (auto& ch : lt) ch = char(std::tolower((unsigned char)ch));
@@ -576,10 +626,13 @@ ToolTable make_tools(Host& host) {
                 }
                 int ms = int(std::chrono::duration_cast<std::chrono::milliseconds>(
                                  std::chrono::steady_clock::now() - t0).count());
-                if (present != gone)
+                if (checked && present != gone)
                     return text_result(std::string(gone ? "Gone" : "Found") + " after " + std::to_string(ms) + " ms.");
-                if (ms >= timeout)
+                if (ms >= timeout || c.host.closing()) {
+                    if (!checked && ui_fails >= 2 && sel.text.empty())
+                        return err("Could not read the screen: uiautomator keeps failing and OCR cannot look up id/desc. Use text instead.");
                     return text_result(std::string(gone ? "Still there" : "Not found") + " after " + std::to_string(ms) + " ms.");
+                }
                 sleep_ms(std::min(500, std::max(1, timeout - ms)));
             }
         });

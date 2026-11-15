@@ -153,8 +153,27 @@ Size ui_root_size(const std::vector<UiNode>& nodes) {
     return {nodes[0].bounds.r, nodes[0].bounds.b};
 }
 
-std::string format_ui_tree(const std::vector<UiNode>& nodes, Size shot) {
-    Size root = ui_root_size(nodes);
+int parse_ui_rotation(const std::string& xml) {
+    size_t h = xml.find("<hierarchy");
+    if (h == std::string::npos) return 0;
+    size_t r = xml.find("rotation=\"", h);
+    if (r == std::string::npos || r > xml.find('>', h)) return 0;
+    int v = std::atoi(xml.c_str() + r + 10);
+    return v >= 0 && v <= 3 ? v : 0;
+}
+
+Size parse_wm_size(const std::string& out) {
+    Size phys, over;
+    auto grab = [&](const char* key, Size* s) {
+        size_t p = out.find(key);
+        if (p != std::string::npos) std::sscanf(out.c_str() + p + std::strlen(key), "%dx%d", &s->w, &s->h);
+    };
+    grab("Physical size:", &phys);
+    grab("Override size:", &over);
+    return over.w > 0 && over.h > 0 ? over : phys;
+}
+
+std::string format_ui_tree(const std::vector<UiNode>& nodes, Size root, Size shot) {
     std::string out;
     for (auto& n : nodes) {
         if (n.text.empty() && n.desc.empty() && n.id.empty() && !n.clickable && !n.scrollable)

@@ -98,9 +98,12 @@ public:
     // Any adb command; output is stdout+stderr. Returns the exit code, or
     // -2 when it ran longer than timeout_ms and was killed.
     int run(const std::vector<std::string>& args, std::string* out, int timeout_ms);
+    // Makes every run() in flight return -2 now (app exit).
+    void cancel_all() { cancel_ = true; }
 
 private:
     std::string adb_path_ = "adb";
+    std::atomic<bool> cancel_{false};
 
     // Synchronously run an adb command, optionally feeding stdin and
     // capturing stdout. Returns the process exit code (or -1 on spawn fail).
@@ -150,15 +153,15 @@ public:
     // coordinates refer to.
     bool control_ready() const { return ctrl_sock_ != (uintptr_t)-1; }
     // action: 0 = down, 1 = up, 2 = move.
-    void send_touch(int action, int x, int y, int fw, int fh);
-    void send_scroll(int x, int y, int fw, int fh, float hscroll, float vscroll);
+    bool send_touch(int action, int x, int y, int fw, int fh);
+    bool send_scroll(int x, int y, int fw, int fh, float hscroll, float vscroll);
     // action: 0 = down, 1 = up. keycode = Android KEYCODE_*.
-    void send_key(int action, int keycode, int meta = 0);
-    void send_text(const std::string& utf8);
+    bool send_key(int action, int keycode, int meta = 0);
+    bool send_text(const std::string& utf8);
     // Sets the phone clipboard and (if paste) pastes it.
-    void send_clipboard(const std::string& utf8, bool paste);
+    bool send_clipboard(const std::string& utf8, bool paste);
     // Turns the phone's own display off (mirroring continues) or back on.
-    void send_display_power(bool on);
+    bool send_display_power(bool on);
 
 private:
     bool send_ctrl_(const uint8_t* data, size_t n);

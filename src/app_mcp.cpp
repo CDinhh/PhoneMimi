@@ -12,16 +12,27 @@ namespace opm {
 void App::mcp_init_() {
     mcp_ = std::make_unique<mcp::McpServer>(mcp::make_tools(*this));
     // Start/stop off the UI thread: stop() may wait for a tool call to end.
+    // Quick off/on clicks may run these threads in any order, so each one
+    // applies the newest wanted state rather than its own arguments.
     auto apply = [this](bool on, int port, const std::string& token) {
-        std::thread([this, on, port, token] {
+        {
             std::lock_guard lk(mcp_mutex_);
-            if (!on) {
+            mcp_want_on_ = on;
+            mcp_want_port_ = port;
+            mcp_want_token_ = token;
+        }
+        std::thread([this] {
+            std::lock_guard lk(mcp_mutex_);
+            if (mcp_closing_) return;
+            bool want = mcp_want_on_;
+            if (!want) {
                 mcp_->stop();
                 renderer_.set_mcp_status("");
                 return;
             }
-            std::string e = mcp_->start(port, token);
-            renderer_.set_mcp_status(e.empty() ? "Listening on 127.0.0.1:" + std::to_string(port) : e);
+            if (mcp_->running() && mcp_->port() == mcp_want_port_) return;
+            std::string e = mcp_->start(mcp_want_port_, mcp_want_token_);
+            renderer_.set_mcp_status(e.empty() ? "Listening on 127.0.0.1:" + std::to_string(mcp_want_port_) : e);
         }).detach();
     };
     renderer_.set_mcp_handler(apply);
@@ -97,6 +108,7 @@ bool App::frame(const std::string& id, mcp::Frame* out, int wait_ms) {
 
 bool App::send(const std::string& id, const mcp::Input& in) {
 #ifdef ENABLE_ANDROID
+    if (mcp_closing_) return false;
     std::lock_guard lk(scrcpy_mutex_);
     android::ScrcpyReceiver* rx = nullptr;
     for (auto& s : scrcpy_sessions_)
@@ -108,15 +120,14 @@ bool App::send(const std::string& id, const mcp::Input& in) {
             int w = 0, h = 0;
             frame_tap_.size(id, &w, &h);
             if (w <= 0) { w = rx->video_width(); h = rx->video_height(); }
-            rx->send_touch(in.action, in.x, in.y, w, h);
-            break;
+            return rx->send_touch(in.action, in.x, in.y, w, h);
         }
-        case mcp::Input::Key:         rx->send_key(in.action, in.keycode); break;
-        case mcp::Input::Text:        rx->send_text(in.text); break;
-        case mcp::Input::Clipboard:   rx->send_clipboard(in.text, /*paste=*/true); break;
-        case mcp::Input::ScreenPower: rx->send_display_power(in.action != 0); break;
+        case mcp::Input::Key:         return rx->send_key(in.action, in.keycode);
+        case mcp::Input::Text:        return rx->send_text(in.text);
+        case mcp::Input::Clipboard:   return rx->send_clipboard(in.text, /*paste=*/true);
+        case mcp::Input::ScreenPower: return rx->send_display_power(in.action != 0);
     }
-    return true;
+    return false;
 #else
     (void)id; (void)in;
     return false;
@@ -126,6 +137,7 @@ bool App::send(const std::string& id, const mcp::Input& in) {
 int App::adb(const std::string& serial, const std::vector<std::string>& args,
              std::string* out, int timeout_ms) {
 #ifdef ENABLE_ANDROID
+    if (mcp_closing_) return -1;
     std::vector<std::string> a;
     if (!serial.empty()) a = {"-s", serial};
     a.insert(a.end(), args.begin(), args.end());

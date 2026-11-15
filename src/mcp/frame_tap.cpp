@@ -44,7 +44,8 @@ bool FrameTap::get(const std::string& id, Frame* out, int wait_ms) {
     });
     it = slots_.find(id);
     if (it == slots_.end()) return false;
-    --it->second.waiting;
+    // The slot may have been dropped and re-created while we waited.
+    if (it->second.waiting > 0) --it->second.waiting;
     if (it->second.frame.w <= 0) return false;
     *out = it->second.frame;
     return true;

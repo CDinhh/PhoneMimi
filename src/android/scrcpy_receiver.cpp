@@ -73,7 +73,8 @@ int spawn_capture(const std::string& exe,
                   const std::vector<std::string>& args,
                   const std::string& stdin_data,
                   std::string* out_stdout,
-                  int timeout_ms = 0) {
+                  int timeout_ms = 0,
+                  const std::atomic<bool>* cancel = nullptr) {
     SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
     HANDLE in_r=nullptr, in_w=nullptr, out_r=nullptr, out_w=nullptr;
     if (!CreatePipe(&in_r, &in_w, &sa, 0)) return -1;
@@ -103,7 +104,13 @@ int spawn_capture(const std::string& exe,
         return -1;
     }
 
-    STARTUPINFOEXA si{};
+    // UTF-16 so non-ASCII paths and text (e.g. Vietnamese) reach adb intact.
+    std::wstring wcmd;
+    if (int wn = MultiByteToWideChar(CP_UTF8, 0, cmdline.c_str(), (int)cmdline.size(), nullptr, 0); wn > 0) {
+        wcmd.resize((size_t)wn);
+        MultiByteToWideChar(CP_UTF8, 0, cmdline.c_str(), (int)cmdline.size(), wcmd.data(), wn);
+    }
+    STARTUPINFOEXW si{};
     si.StartupInfo.cb = sizeof(si);
     si.StartupInfo.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
     si.StartupInfo.wShowWindow = SW_HIDE;
@@ -113,7 +120,7 @@ int spawn_capture(const std::string& exe,
     si.lpAttributeList = attrs;
     PROCESS_INFORMATION pi{};
 
-    BOOL ok = CreateProcessA(nullptr, cmdline.data(), nullptr, nullptr, TRUE,
+    BOOL ok = CreateProcessW(nullptr, wcmd.data(), nullptr, nullptr, TRUE,
                              CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT,
                              nullptr, nullptr, &si.StartupInfo, &pi);
     DeleteProcThreadAttributeList(attrs);
@@ -134,22 +141,25 @@ int spawn_capture(const std::string& exe,
     char buf[4096];
     DWORD n = 0;
     if (timeout_ms > 0) {
+        // Keep at most 8 MB (UI dumps are a few hundred KB) but keep
+        // draining so the child never blocks on a full pipe.
+        const size_t kCap = 8u << 20;
         const ULONGLONG deadline = GetTickCount64() + (ULONGLONG)timeout_ms;
         for (;;) {
             DWORD avail = 0;
             if (!PeekNamedPipe(out_r, nullptr, 0, nullptr, &avail, nullptr)) break;  // EOF
-            if (avail > 0) {
-                if (!ReadFile(out_r, buf, sizeof(buf), &n, nullptr) || n == 0) break;
-                if (out_stdout) out_stdout->append(buf, n);
-                continue;
-            }
-            if (GetTickCount64() >= deadline) {
+            if (GetTickCount64() >= deadline || (cancel && cancel->load())) {
                 TerminateProcess(pi.hProcess, 1);
                 WaitForSingleObject(pi.hProcess, 1000);
                 CloseHandle(out_r);
                 CloseHandle(pi.hProcess);
                 CloseHandle(pi.hThread);
                 return -2;
+            }
+            if (avail > 0) {
+                if (!ReadFile(out_r, buf, sizeof(buf), &n, nullptr) || n == 0) break;
+                if (out_stdout && out_stdout->size() < kCap) out_stdout->append(buf, n);
+                continue;
             }
             Sleep(10);
         }
@@ -197,7 +207,8 @@ HANDLE spawn_detached(const std::string& exe,
 #else
 namespace {
 int spawn_capture(const std::string&, const std::vector<std::string>&,
-                  const std::string&, std::string*, int = 0) { return -1; }
+                  const std::string&, std::string*, int = 0,
+                  const std::atomic<bool>* = nullptr) { return -1; }
 void* spawn_detached(const std::string&, const std::vector<std::string>&) { return nullptr; }
 }
 #endif
@@ -222,7 +233,7 @@ AdbController::~AdbController() = default;
 
 int AdbController::run(const std::vector<std::string>& args,
                        std::string* out, int timeout_ms) {
-    return spawn_capture(adb_path_, args, {}, out, timeout_ms);
+    return spawn_capture(adb_path_, args, {}, out, timeout_ms, &cancel_);
 }
 
 int AdbController::run_(const std::vector<std::string>& args,
@@ -681,8 +692,8 @@ bool ScrcpyReceiver::send_ctrl_(const uint8_t* data, size_t n) {
     return true;
 }
 
-void ScrcpyReceiver::send_touch(int action, int x, int y, int fw, int fh) {
-    if (!control_ready() || fw <= 0 || fh <= 0) return;
+bool ScrcpyReceiver::send_touch(int action, int x, int y, int fw, int fh) {
+    if (!control_ready() || fw <= 0 || fh <= 0) return false;
     uint8_t b[32] = {};
     b[0] = MSG_TOUCH;
     b[1] = (uint8_t)action;                       // 0 down, 1 up, 2 move
@@ -694,11 +705,11 @@ void ScrcpyReceiver::send_touch(int action, int x, int y, int fw, int fh) {
     put16(b + 22, action == 1 ? 0 : 0xffff);      // pressure
     put32(b + 24, 1);                             // action button: primary
     put32(b + 28, action == 1 ? 0 : 1);           // buttons held
-    send_ctrl_(b, sizeof(b));
+    return send_ctrl_(b, sizeof(b));
 }
 
-void ScrcpyReceiver::send_scroll(int x, int y, int fw, int fh, float hs, float vs) {
-    if (!control_ready() || fw <= 0 || fh <= 0) return;
+bool ScrcpyReceiver::send_scroll(int x, int y, int fw, int fh, float hs, float vs) {
+    if (!control_ready() || fw <= 0 || fh <= 0) return false;
     auto fp = [](float f) {
         if (f > 1.0f) f = 1.0f;
         if (f < -1.0f) f = -1.0f;
@@ -716,32 +727,32 @@ void ScrcpyReceiver::send_scroll(int x, int y, int fw, int fh, float hs, float v
     put16(b + 13, fp(hs));
     put16(b + 15, fp(vs));
     put32(b + 17, 0);
-    send_ctrl_(b, sizeof(b));
+    return send_ctrl_(b, sizeof(b));
 }
 
-void ScrcpyReceiver::send_key(int action, int keycode, int meta) {
-    if (!control_ready()) return;
+bool ScrcpyReceiver::send_key(int action, int keycode, int meta) {
+    if (!control_ready()) return false;
     uint8_t b[14] = {};
     b[0] = MSG_KEYCODE;
     b[1] = (uint8_t)action;
     put32(b + 2, (uint32_t)keycode);
     put32(b + 6, 0);
     put32(b + 10, (uint32_t)meta);
-    send_ctrl_(b, sizeof(b));
+    return send_ctrl_(b, sizeof(b));
 }
 
-void ScrcpyReceiver::send_text(const std::string& s) {
-    if (!control_ready() || s.empty()) return;
+bool ScrcpyReceiver::send_text(const std::string& s) {
+    if (!control_ready() || s.empty()) return false;
     size_t n = utf8_prefix(s, 300);
     std::vector<uint8_t> b(5 + n);
     b[0] = MSG_TEXT;
     put32(b.data() + 1, (uint32_t)n);
     memcpy(b.data() + 5, s.data(), n);
-    send_ctrl_(b.data(), b.size());
+    return send_ctrl_(b.data(), b.size());
 }
 
-void ScrcpyReceiver::send_clipboard(const std::string& s, bool paste) {
-    if (!control_ready() || s.empty()) return;
+bool ScrcpyReceiver::send_clipboard(const std::string& s, bool paste) {
+    if (!control_ready() || s.empty()) return false;
     if (paste) {
         // The phone pastes asynchronously: changing the clipboard again
         // before it has done so would paste the newer text twice.
@@ -757,7 +768,7 @@ void ScrcpyReceiver::send_clipboard(const std::string& s, bool paste) {
     b[9] = paste ? 1 : 0;
     put32(b.data() + 10, (uint32_t)n);
     memcpy(b.data() + 14, s.data(), n);
-    send_ctrl_(b.data(), b.size());
+    return send_ctrl_(b.data(), b.size());
 }
 
 // Registers a physical keyboard on the phone. We never type through it
@@ -773,10 +784,10 @@ void ScrcpyReceiver::attach_virtual_keyboard_() {
     send_ctrl_(b, sizeof(b));
 }
 
-void ScrcpyReceiver::send_display_power(bool on) {
-    if (!control_ready()) return;
+bool ScrcpyReceiver::send_display_power(bool on) {
+    if (!control_ready()) return false;
     const uint8_t b[2] = { MSG_SET_DISPLAY_POWER, static_cast<uint8_t>(on ? 1 : 0) };
-    send_ctrl_(b, sizeof(b));
+    return send_ctrl_(b, sizeof(b));
 }
 
 } // namespace opm::android

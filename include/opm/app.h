@@ -193,6 +193,12 @@ private:
     std::string connect_usb() override;
     std::string connect_wifi(const std::string& addr) override;
     media::OcrJobResult ocr(const mcp::Frame& f) override;
+    bool closing() override { return mcp_closing_.load(); }
+    std::atomic<bool> mcp_closing_{false};
+    // Latest switch state; the worker thread applies whatever is newest.
+    bool mcp_want_on_ = false;
+    int mcp_want_port_ = 0;
+    std::string mcp_want_token_;
     std::mutex adb_rows_mutex_;
     std::vector<mcp::DeviceRow> adb_rows_;
     std::chrono::steady_clock::time_point adb_rows_at_{};

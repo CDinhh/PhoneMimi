@@ -12,6 +12,12 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
+#include <filesystem>
+#include <fstream>
+
+#ifdef ENABLE_ANDROID
+#include <opm/android/scrcpy_receiver.h>
+#endif
 #include <opm/mcp/frame_tap.h>
 #include <opm/mcp/mcp_protocol.h>
 #include <opm/mcp/mcp_server.h>
@@ -88,6 +94,11 @@ void test_protocol() {
     CHECK(call(t, rpc("bogus/method"))["error"]["code"] == -32601);
     CHECK(json::parse(handle_jsonrpc("{bad", t))["error"]["code"] == -32700);
     CHECK(json::parse(handle_jsonrpc("[]", t))["error"]["code"] == -32600);
+    // Wrong types must answer with an error, never throw (review fix).
+    CHECK(json::parse(handle_jsonrpc(R"({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":5}})", t))
+              ["error"]["code"] == -32602);
+    CHECK(json::parse(handle_jsonrpc(R"({"jsonrpc":"2.0","id":4,"method":"initialize","params":{"protocolVersion":5}})", t))
+              .contains("error"));
     CHECK(is_err(call(t, rpc("tools/call", {{"name", "boom"}}))));
 
     HttpRequest q;
@@ -142,7 +153,7 @@ void test_util() {
         CHECK(n[2].depth == 2);
         CHECK(n[3].text == "A & B\nC");
     }
-    std::string tree = format_ui_tree(n, {576, 1280});
+    std::string tree = format_ui_tree(n, {1080, 2400}, {576, 1280});
     CHECK(tree.find("id=login") != std::string::npos);
     CHECK(tree.find("[53,1067][523,1152]") != std::string::npos);
     CHECK(tree.find("LinearLayout") == std::string::npos);
@@ -152,6 +163,13 @@ void test_util() {
     CHECK(find_nodes(n, {"nope", "", "", false}).empty());
     CHECK(!parse_ui_dump("ERROR: could not get idle state.\n", &n, &e));
     CHECK(e.find("idle") != std::string::npos);
+    Size wm = parse_wm_size("Physical size: 1080x2400\n");
+    CHECK(wm.w == 1080 && wm.h == 2400);
+    wm = parse_wm_size("Physical size: 1080x2400\nOverride size: 720x1600\n");
+    CHECK(wm.w == 720 && wm.h == 1600);
+    CHECK(parse_wm_size("error").w == 0);
+    CHECK(parse_ui_rotation(kDump) == 0);
+    CHECK(parse_ui_rotation("<hierarchy rotation=\"1\"><node/></hierarchy>") == 1);
 
     const std::pair<const char*, int> keys[] = {
         {"back", 4}, {"home", 3}, {"recents", 187}, {"power", 26}, {"enter", 66},
@@ -198,7 +216,9 @@ struct FakeHost : Host {
     std::vector<Input> sent;
     std::map<std::string, std::pair<int, std::string>> adb_replies;
     bool send_ok = true;
+    bool is_closing = false;
     Frame fr;
+    bool closing() override { return is_closing; }
 
     std::vector<DeviceRow> devices() override { return rows; }
     bool frame(const std::string& id, Frame* out, int) override {
@@ -316,6 +336,34 @@ void test_tools() {
     r = tool(t, "ocr_screen", {});
     CHECK(text_of(r).find("Hello world [53,107,160,21]") == 0);
 
+    // A dialog: the dump's root is only the dialog window, bounds are still
+    // screen pixels, so taps must map with the display size (review fix).
+    h.adb_replies["shell wm size"] = {0, "Physical size: 1080x2400\n"};
+    h.adb_replies["exec-out uiautomator dump /dev/tty"] = {0,
+        "<hierarchy rotation=\"0\"><node text=\"\" class=\"android.widget.FrameLayout\" "
+        "bounds=\"[42,856][1038,1544]\"><node text=\"OK\" class=\"android.widget.Button\" "
+        "clickable=\"true\" bounds=\"[800,1400][1000,1500]\" /></node></hierarchy>"};
+    h.sent.clear();
+    r = tool(t, "tap", {{"text", "OK"}, {"exact", true}});
+    CHECK(!is_err(r) && !h.sent.empty() && h.sent[0].x == 900 && h.sent[0].y == 1450);
+    r = tool(t, "ui_tree", {});
+    CHECK(text_of(r).find("[427,747][533,800]") != std::string::npos);
+
+    // wait_for must not claim "Gone" when it cannot look (review fix).
+    r = tool(t, "wait_for", {{"device", "I1"}, {"id", "login"}, {"timeout_ms", 100}});
+    CHECK(is_err(r));
+    h.adb_replies["exec-out uiautomator dump /dev/tty"] = {0, "ERROR: could not get idle state.\n"};
+    r = tool(t, "wait_for", {{"id", "login"}, {"gone", true}, {"timeout_ms", 1500}});
+    CHECK(text_of(r).find("Gone") == std::string::npos);
+    h.adb_replies["exec-out uiautomator dump /dev/tty"] = {0, kDump};
+
+    // App exit: a long wait_for ends at once.
+    h.is_closing = true;
+    auto w0 = std::chrono::steady_clock::now();
+    tool(t, "wait_for", {{"text", "zzz"}, {"timeout_ms", 30000}});
+    CHECK(std::chrono::steady_clock::now() - w0 < std::chrono::seconds(3));
+    h.is_closing = false;
+
     h.rows = {};
     r = tool(t, "tap", {{"x", 1}, {"y", 1}});
     CHECK(is_err(r) && text_of(r).find("connect_usb") != std::string::npos);
@@ -387,6 +435,31 @@ void test_server() {
     if (s != INVALID_SOCKET) closesocket(s);
 }
 
+#ifdef ENABLE_ANDROID
+// adb runs through the same spawner; cmd.exe stands in for adb (review fixes).
+void test_spawn() {
+    android::AdbController a;
+    a.set_adb_path("cmd.exe");
+    std::string out;
+    auto t0 = std::chrono::steady_clock::now();
+    int rc = a.run({"/c", "for /l %i in (0,0,1) do @echo yyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"}, &out, 1500);
+    CHECK(rc == -2);
+    CHECK(std::chrono::steady_clock::now() - t0 < std::chrono::seconds(6));
+    CHECK(!out.empty() && out.size() <= (8u << 20) + 8192);
+
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path p = fs::temp_directory_path(ec) / fs::path(u8"pm_mcp_Dự án.txt");
+    { std::ofstream(p) << "x"; }
+    auto u8 = p.u8string();
+    std::string path(u8.begin(), u8.end());
+    out.clear();
+    rc = a.run({"/c", "if", "exist", path, "echo", "YES"}, &out, 5000);
+    CHECK(rc == 0 && out.find("YES") != std::string::npos);
+    fs::remove(p, ec);
+}
+#endif
+
 } // namespace
 
 int run_self_test() {
@@ -395,6 +468,9 @@ int run_self_test() {
     test_frame_tap();
     test_tools();
     test_server();
+#ifdef ENABLE_ANDROID
+    test_spawn();
+#endif
     if (g_fails == 0)
         std::cout << "mcp self-test: PASS (" << g_checks << " checks)\n";
     else

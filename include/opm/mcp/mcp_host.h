@@ -45,6 +45,8 @@ public:
     virtual std::string connect_usb() = 0;
     virtual std::string connect_wifi(const std::string& addr) = 0;
     virtual media::OcrJobResult ocr(const Frame& f) = 0;
+    // True once the app is shutting down: long tool loops stop early.
+    virtual bool closing() { return false; }
 };
 
 } // namespace opm::mcp

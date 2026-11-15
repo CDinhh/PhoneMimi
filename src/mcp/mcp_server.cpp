@@ -94,10 +94,10 @@ void McpServer::stop() {
     if (accept_thread_.joinable()) accept_thread_.join();
     std::unique_lock lk(mu_);
     for (auto c : clients_) shutdown(SOCKET(c), SD_BOTH);
-    // A tool may be mid-call (an APK install takes minutes); do not hang
-    // shutdown on it. shortcut: worker threads still running after 3 s are
-    // left behind, fine because stop() only runs on toggle-off and app exit.
-    idle_cv_.wait_for(lk, std::chrono::seconds(3), [this] { return active_ == 0; });
+    // The app cancels adb and tool loops before this on exit, so workers end
+    // fast. shortcut: a worker still busy after 10 s is left behind; only a
+    // tool that ignores Host::closing() could hit that.
+    idle_cv_.wait_for(lk, std::chrono::seconds(10), [this] { return active_ == 0; });
     std::cout << "[MCP] stopped\n";
 }
 
@@ -106,6 +106,7 @@ void McpServer::accept_loop_() {
         SOCKET c = accept(SOCKET(listen_), nullptr, nullptr);
         if (c == INVALID_SOCKET) {
             if (!running_) break;
+            Sleep(50);
             continue;
         }
         DWORD to = 30000;
@@ -117,9 +118,14 @@ void McpServer::accept_loop_() {
         }
         std::thread([this, c] {
             serve_(uintptr_t(c));
+            {
+                // Forget the handle before closing it: a reused handle
+                // must never be shut down by stop().
+                std::lock_guard lk(mu_);
+                clients_.erase(uintptr_t(c));
+            }
             closesocket(c);
             std::lock_guard lk(mu_);
-            clients_.erase(uintptr_t(c));
             --active_;
             idle_cv_.notify_all();
         }).detach();

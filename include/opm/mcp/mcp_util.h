@@ -29,8 +29,13 @@ struct UiNode {
 // "ERROR: could not get idle state." during animations.
 bool parse_ui_dump(const std::string& xml, std::vector<UiNode>* out, std::string* err);
 Size ui_root_size(const std::vector<UiNode>& nodes);
-// One line per useful node, bounds mapped from the root size to `shot`.
-std::string format_ui_tree(const std::vector<UiNode>& nodes, Size shot);
+// <hierarchy rotation="N">: 0..3, 0 if missing.
+int parse_ui_rotation(const std::string& xml);
+// `wm size` output: the override size if set, else the physical size.
+Size parse_wm_size(const std::string& out);
+// One line per useful node, bounds mapped from `screen` (device pixels in
+// the current rotation) to `shot`.
+std::string format_ui_tree(const std::vector<UiNode>& nodes, Size screen, Size shot);
 
 struct Selector { std::string text, id, desc; bool exact = false; };
 std::vector<const UiNode*> find_nodes(const std::vector<UiNode>& nodes, const Selector& s);
