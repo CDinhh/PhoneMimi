@@ -838,6 +838,7 @@ static const char* tr(const char* en) {
         {"Phone sound plays here too; U mutes the PC", "\xC3\x82m thanh \xC4\x91i\xE1\xBB\x87n tho\xE1\xBA\xA1i ph\xC3\xA1t c\xE1\xBA\xA3 \xE1\xBB\x9F \xC4\x91\xC3\xA2y; U t\xE1\xBA\xAFt ti\xE1\xBA\xBFng PC"},
         {"Ctrl+S screenshot, Ctrl+R record, F fullscreen", "Ctrl+S ch\xE1\xBB\xA5p, Ctrl+R quay, F to\xC3\xA0n m\xC3\xA0n h\xC3\xACnh"},
         {"Claude Code control: Phone > Claude control (MCP)", "Claude Code \xC4\x91i\xE1\xBB\x81u khi\xE1\xBB\x83n: \xC4\x90i\xE1\xBB\x87n tho\xE1\xBA\xA1i > Claude \xC4\x91i\xE1\xBB\x81u khi\xE1\xBB\x83n (MCP)"},
+        {"Watch the tips", "Xem l\xE1\xBA\xA1i m\xE1\xBA\xB9o"},
         {"Version history", "L\xE1\xBB\x8B""ch s\xE1\xBB\xAD phi\xC3\xAAn b\xE1\xBA\xA3n"},
         {"About", "Gi\xE1\xBB\x9Bi thi\xE1\xBB\x87u"},
         {"Connect with a cable", "K\xE1\xBA\xBFt n\xE1\xBB\x91i b\xE1\xBA\xB1ng d\xC3\xA2y"},
@@ -2591,6 +2592,14 @@ void Renderer::run() {
                                 settings_panel_anim_start_ = std::chrono::steady_clock::now();
                                 setup_guide_visible_ = true;
                                 setup_guide_auto_ = false;
+                            }
+                            if (hit(settings_help_tips_btn_)) {
+                                settings_panel_visible_ = false;
+                                settings_panel_animating_ = true;
+                                settings_panel_anim_start_ = std::chrono::steady_clock::now();
+                                tips_index_ = 0;
+                                tips_open_index_ = -1;
+                                tips_visible_ = true;
                             }
                             if (hit(settings_help_ver_btn_) || hit(settings_help_about_btn_)) {
                                 bool ver = hit(settings_help_ver_btn_);
@@ -6032,7 +6041,7 @@ void Renderer::draw_settings_panel() {
 #endif
     // Phone: + the connected-phone row. Capture: + the two webcam rows.
     // Help: guide row, five tips, version/about row.
-    const int rows = tab == 0 ? 5 : tab == 1 ? phone_rows + 1 : tab == 2 ? (resize_on ? 9 : 7) : 7;
+    const int rows = tab == 0 ? 5 : tab == 1 ? phone_rows + 1 : tab == 2 ? (resize_on ? 9 : 7) : 8;
     const int act_h = row_h;   // quick-action buttons above the tabs
     int total_h = pad + title_h + gap + act_h + gap + tabs_h + gap + rows * row_h
                 + (tab == 1 ? gap + note_h : 0) + pad;
@@ -6059,7 +6068,7 @@ void Renderer::draw_settings_panel() {
     for (auto& b : settings_seg_lang_btns_) b = {};
     for (auto& b : settings_action_btns_) b = {};
     settings_dev_add_btn_ = settings_dev_disc_btn_ = {};
-    settings_help_guide_btn_ = settings_help_ver_btn_ = settings_help_about_btn_ = {};
+    settings_help_guide_btn_ = settings_help_tips_btn_ = settings_help_ver_btn_ = settings_help_about_btn_ = {};
     for (auto& b : settings_seg_res_btns_) b = {};
     for (auto& b : settings_seg_fps_btns_) b = {};
     for (auto& b : settings_seg_ios_fps_btns_) b = {};
@@ -6346,6 +6355,13 @@ void Renderer::draw_settings_panel() {
             draw_glyph(sdl_renderer_, lucide::ChevronRight, card_x + card_w - inner - label_h / 2,
                        y + row_h / 2, label_h, 150, 154, 162, text_alpha);
             settings_help_guide_btn_ = {card_x, y, card_w, row_h};
+        }
+        {
+            int y = begin_row(true);
+            row_label(tr("Watch the tips"), y, label_h * 2);
+            draw_glyph(sdl_renderer_, lucide::Play, card_x + card_w - inner - label_h / 2,
+                       y + row_h / 2, label_h, 150, 154, 162, text_alpha);
+            settings_help_tips_btn_ = {card_x, y, card_w, row_h};
         }
         const char* const kTipsHelp[5] = {
             tr("Drop files on the phone: APKs install, others go to Download"),

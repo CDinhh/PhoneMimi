@@ -895,7 +895,7 @@ private:
     BtnRect settings_action_btns_[7];
     BtnRect settings_dev_add_btn_, settings_dev_disc_btn_;
     std::string settings_dev_id_;
-    BtnRect settings_help_guide_btn_, settings_help_ver_btn_, settings_help_about_btn_;
+    BtnRect settings_help_guide_btn_, settings_help_tips_btn_, settings_help_ver_btn_, settings_help_about_btn_;
     std::mutex mcp_status_mutex_;
     std::string mcp_status_;
     BtnRect settings_toggle_mcp_btn_;
