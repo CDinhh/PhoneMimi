@@ -96,6 +96,7 @@ Settings Settings::load() {
             else if (k == "android_max_size")             s.android_max_size             = std::clamp(std::stoi(v), 0, 8192);
             else if (k == "android_max_fps")              s.android_max_fps              = std::clamp(std::stoi(v), 0, 240);
             else if (k == "android_bitrate_mbps")         s.android_bitrate_mbps         = std::clamp(std::stoi(v), 1, 100);
+            else if (k == "language")                     s.language = std::clamp(std::stoi(v), 0, 1);
             else if (k == "tip_drop_shown")               s.tip_drop_shown = (v == "1" || v == "true");
             else if (k == "android_mute_phone")           s.android_mute_phone = (v == "1" || v == "true");
             else if (k == "mcp_enabled")                  s.mcp_enabled = (v == "1" || v == "true");
@@ -144,6 +145,7 @@ bool Settings::save() const {
     f << "accent_color="                << accent_color << "\n";
     f << "android_mute_phone="          << (android_mute_phone ? "1" : "0") << "\n";
     f << "tip_drop_shown="              << (tip_drop_shown ? "1" : "0") << "\n";
+    f << "language="                    << language << "\n";
     f << "mcp_enabled="                 << (mcp_enabled ? "1" : "0") << "\n";
     f << "mcp_port="                    << mcp_port << "\n";
     f << "mcp_token="                   << mcp_token << "\n";

@@ -282,8 +282,14 @@ static SDL_Texture* make_text_texture(SDL_Renderer* renderer, const std::string&
     HFONT font = make_ui_font(font_height, weight);
     HFONT old_font = (HFONT)SelectObject(hdc, font);
 
+    // UTF-8 in, UTF-16 to GDI, so Vietnamese and phone names with accents draw.
+    std::wstring wtext;
+    if (int wn = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), (int)text.size(), nullptr, 0); wn > 0) {
+        wtext.resize((size_t)wn);
+        MultiByteToWideChar(CP_UTF8, 0, text.c_str(), (int)text.size(), wtext.data(), wn);
+    }
     SIZE sz;
-    GetTextExtentPoint32A(hdc, text.c_str(), (int)text.size(), &sz);
+    GetTextExtentPoint32W(hdc, wtext.c_str(), (int)wtext.size(), &sz);
     if (sz.cx <= 0 || sz.cy <= 0) {
         SelectObject(hdc, old_font); DeleteObject(font); DeleteDC(hdc);
         return nullptr;
@@ -292,8 +298,8 @@ static SDL_Texture* make_text_texture(SDL_Renderer* renderer, const std::string&
     // last-char ABC overhang) is not clipped. GetTextExtentPoint32 reports
     // advance widths only, not the actual ink bounds of the last glyph.
     {
-        TEXTMETRICA tm;
-        if (GetTextMetricsA(hdc, &tm)) sz.cx += tm.tmOverhang;
+        TEXTMETRICW tm;
+        if (GetTextMetricsW(hdc, &tm)) sz.cx += tm.tmOverhang;
         sz.cx += (font_height + 3) / 4;
     }
 
@@ -315,7 +321,7 @@ static SDL_Texture* make_text_texture(SDL_Renderer* renderer, const std::string&
     memset(bits, 0, sz.cx * sz.cy * 4);
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, RGB(255, 255, 255));
-    TextOutA(hdc, 0, 0, text.c_str(), (int)text.size());
+    TextOutW(hdc, 0, 0, wtext.c_str(), (int)wtext.size());
     GdiFlush();
 
     // ClearType renders sub-pixel RGB. Combine into luminance-based alpha.
@@ -775,6 +781,113 @@ static const Accent kAccents[6] = {
 };
 static const Accent& accent_for(int index) {
     return kAccents[(index >= 0 && index < 6) ? index : 0];
+}
+
+
+// UI language (Settings > General > Language). English strings are the
+// keys; tr() returns the Vietnamese text when it is selected.
+static bool g_lang_vi = false;
+static const char* tr(const char* en) {
+    if (!g_lang_vi) return en;
+    static const std::unordered_map<std::string, const char*> kVi = {
+        {"Settings", "C\xC3\xA0i \xC4\x91\xE1\xBA\xB7t"},
+        {"General", "Chung"},
+        {"Phone", "\xC4\x90i\xE1\xBB\x87n tho\xE1\xBA\xA1i"},
+        {"Capture", "Ch\xE1\xBB\xA5p & quay"},
+        {"Help", "Tr\xE1\xBB\xA3 gi\xC3\xBAp"},
+        {"Language", "Ng\xC3\xB4n ng\xE1\xBB\xAF"},
+        {"Screenshot (Ctrl+S)", "Ch\xE1\xBB\xA5p m\xC3\xA0n h\xC3\xACnh (Ctrl+S)"},
+        {"Record (Ctrl+R)", "Quay m\xC3\xA0n h\xC3\xACnh (Ctrl+R)"},
+        {"Screenshots folder", "Th\xC6\xB0 m\xE1\xBB\xA5""c \xE1\xBA\xA3nh"},
+        {"Log (L)", "Nh\xE1\xBA\xADt k\xC3\xBD (L)"},
+        {"Statistics (T)", "Th\xE1\xBB\x91ng k\xC3\xAA (T)"},
+        {"Quit PhoneMimi", "Tho\xC3\xA1t PhoneMimi"},
+        {"Frame colour", "M\xC3\xA0u khung"},
+        {"Accent colour", "M\xC3\xA0u nh\xE1\xBA\xA5n"},
+        {"Computer name as receiver name", "D\xC3\xB9ng t\xC3\xAAn m\xC3\xA1y t\xC3\xADnh l\xC3\xA0m t\xC3\xAAn nh\xE1\xBA\xADn"},
+        {"Save a log file", "L\xC6\xB0u file nh\xE1\xBA\xADt k\xC3\xBD"},
+        {"No phone connected", "Ch\xC6\xB0""a c\xC3\xB3 \xC4\x91i\xE1\xBB\x87n tho\xE1\xBA\xA1i"},
+        {"Add", "Th\xC3\xAAm"},
+        {"Disconnect", "Ng\xE1\xBA\xAFt k\xE1\xBA\xBFt n\xE1\xBB\x91i"},
+        {"Auto-connect over USB", "T\xE1\xBB\xB1 k\xE1\xBA\xBFt n\xE1\xBB\x91i qua USB"},
+        {"Type from this keyboard", "G\xC3\xB5 b\xE1\xBA\xB1ng b\xC3\xA0n ph\xC3\xADm n\xC3\xA0y"},
+        {"Type by pasting", "G\xC3\xB5 b\xE1\xBA\xB1ng c\xC3\xA1""ch d\xC3\xA1n"},
+        {"Hide the phone keyboard", "\xE1\xBA\xA8n b\xC3\xA0n ph\xC3\xADm \xC4\x91i\xE1\xBB\x87n tho\xE1\xBA\xA1i"},
+        {"Phone screen off", "T\xE1\xBA\xAFt m\xC3\xA0n h\xC3\xACnh \xC4\x91i\xE1\xBB\x87n tho\xE1\xBA\xA1i"},
+        {"Mute phone speaker", "T\xE1\xBA\xAFt loa \xC4\x91i\xE1\xBB\x87n tho\xE1\xBA\xA1i"},
+        {"Resolution", "\xC4\x90\xE1\xBB\x99 ph\xC3\xA2n gi\xE1\xBA\xA3i"},
+        {"Frame rate", "T\xE1\xBB\x91""c \xC4\x91\xE1\xBB\x99 khung h\xC3\xACnh"},
+        {"iPhone frame rate", "Khung h\xC3\xACnh iPhone"},
+        {"Max", "T\xE1\xBB\x91i \xC4\x91""a"},
+        {"Claude control (MCP)", "Claude \xC4\x91i\xE1\xBB\x81u khi\xE1\xBB\x83n (MCP)"},
+        {"Copy command", "Sao ch\xC3\xA9p l\xE1\xBB\x87nh"},
+        {"Copied", "\xC4\x90\xC3\xA3 ch\xC3\xA9p"},
+        {"Applies the next time a phone connects.", "\xC3\x81p d\xE1\xBB\xA5ng t\xE1\xBB\xAB l\xE1\xBA\xA7n k\xE1\xBA\xBFt n\xE1\xBB\x91i sau."},
+        {"Save to Pictures", "L\xC6\xB0u v\xC3\xA0o \xE1\xBA\xA2nh"},
+        {"Copy to clipboard", "Ch\xC3\xA9p v\xC3\xA0o clipboard"},
+        {"Open in Snagit", "M\xE1\xBB\x9F b\xE1\xBA\xB1ng Snagit"},
+        {"Recording format", "\xC4\x90\xE1\xBB\x8Bnh d\xE1\xBA\xA1ng quay"},
+        {"Resize screenshots", "\xC4\x90\xE1\xBB\x95i c\xE1\xBB\xA1 \xE1\xBA\xA3nh ch\xE1\xBB\xA5p"},
+        {"Height", "Chi\xE1\xBB\x81u cao"},
+        {"Keep the original too", "Gi\xE1\xBB\xAF c\xE1\xBA\xA3 \xE1\xBA\xA3nh g\xE1\xBB\x91""c"},
+        {"Mirror the webcam", "L\xE1\xBA\xADt ngang webcam"},
+        {"Webcam in recordings", "Webcam trong video quay"},
+        {"Connect a phone with a cable", "K\xE1\xBA\xBFt n\xE1\xBB\x91i \xC4\x91i\xE1\xBB\x87n tho\xE1\xBA\xA1i b\xE1\xBA\xB1ng d\xC3\xA2y"},
+        {"Drop files on the phone: APKs install, others go to Download", "Th\xE1\xBA\xA3 file v\xC3\xA0o \xC4\x91i\xE1\xBB\x87n tho\xE1\xBA\xA1i: APK \xC4\x91\xC6\xB0\xE1\xBB\xA3""c c\xC3\xA0i, file kh\xC3\xA1""c v\xC3\xA0o Download"},
+        {"Copy on one side, paste on the other", "Sao ch\xC3\xA9p b\xC3\xAAn n\xC3\xA0y, d\xC3\xA1n b\xC3\xAAn kia"},
+        {"Phone sound plays here too; U mutes the PC", "\xC3\x82m thanh \xC4\x91i\xE1\xBB\x87n tho\xE1\xBA\xA1i ph\xC3\xA1t c\xE1\xBA\xA3 \xE1\xBB\x9F \xC4\x91\xC3\xA2y; U t\xE1\xBA\xAFt ti\xE1\xBA\xBFng PC"},
+        {"Ctrl+S screenshot, Ctrl+R record, F fullscreen", "Ctrl+S ch\xE1\xBB\xA5p, Ctrl+R quay, F to\xC3\xA0n m\xC3\xA0n h\xC3\xACnh"},
+        {"Claude Code control: Phone > Claude control (MCP)", "Claude Code \xC4\x91i\xE1\xBB\x81u khi\xE1\xBB\x83n: \xC4\x90i\xE1\xBB\x87n tho\xE1\xBA\xA1i > Claude \xC4\x91i\xE1\xBB\x81u khi\xE1\xBB\x83n (MCP)"},
+        {"Version history", "L\xE1\xBB\x8B""ch s\xE1\xBB\xAD phi\xC3\xAAn b\xE1\xBA\xA3n"},
+        {"About", "Gi\xE1\xBB\x9Bi thi\xE1\xBB\x87u"},
+        {"Connect with a cable", "K\xE1\xBA\xBFt n\xE1\xBB\x91i b\xE1\xBA\xB1ng d\xC3\xA2y"},
+        {"Phone found. Turn on USB debugging:", "\xC4\x90\xC3\xA3 th\xE1\xBA\xA5y \xC4\x91i\xE1\xBB\x87n tho\xE1\xBA\xA1i. B\xE1\xBA\xADt g\xE1\xBB\xA1 l\xE1\xBB\x97i USB:"},
+        {"Unlock the phone and tap Allow (tick Always allow).", "M\xE1\xBB\x9F kh\xC3\xB3""a \xC4\x91i\xE1\xBB\x87n tho\xE1\xBA\xA1i v\xC3\xA0 b\xE1\xBA\xA5m Cho ph\xC3\xA9p (t\xC3\xAD""ch Lu\xC3\xB4n cho ph\xC3\xA9p)."},
+        {"iPhone needs no cable: Control Center > Screen Mirroring > PhoneMimi.", "iPhone kh\xC3\xB4ng c\xE1\xBA\xA7n d\xC3\xA2y: Trung t\xC3\xA2m \xC4\x91i\xE1\xBB\x81u khi\xE1\xBB\x83n > Ph\xE1\xBA\xA3n chi\xE1\xBA\xBFu m\xC3\xA0n h\xC3\xACnh > PhoneMimi."},
+        {"Turn on USB debugging, then plug in the cable.", "B\xE1\xBA\xADt g\xE1\xBB\xA1 l\xE1\xBB\x97i USB r\xE1\xBB\x93i c\xE1\xBA\xAFm d\xC3\xA2y."},
+        {"Other", "Kh\xC3\xA1""c"},
+        {"Then plug in the cable and tap Allow on the phone.", "Sau \xC4\x91\xC3\xB3 c\xE1\xBA\xAFm d\xC3\xA2y v\xC3\xA0 b\xE1\xBA\xA5m Cho ph\xC3\xA9p tr\xC3\xAAn \xC4\x91i\xE1\xBB\x87n tho\xE1\xBA\xA1i."},
+        {"Tap Build number 7 times, then enter your PIN", "Ch\xE1\xBA\xA1m Build number 7 l\xE1\xBA\xA7n, r\xE1\xBB\x93i nh\xE1\xBA\xADp m\xC3\xA3 PIN"},
+        {"Settings > Developer options > USB debugging: On", "Settings > Developer options > USB debugging: B\xE1\xBA\xADt"},
+        {"Tap OS version 7 times", "Ch\xE1\xBA\xA1m OS version 7 l\xE1\xBA\xA7n"},
+        {"Turn on USB debugging and USB debugging (Security settings), then restart the phone", "B\xE1\xBA\xADt USB debugging v\xC3\xA0 USB debugging (Security settings), r\xE1\xBB\x93i kh\xE1\xBB\x9Fi \xC4\x91\xE1\xBB\x99ng l\xE1\xBA\xA1i m\xC3\xA1y"},
+        {"Settings > Additional settings > Developer options > USB debugging: On", "Settings > Additional settings > Developer options > USB debugging: B\xE1\xBA\xADt"},
+        {"Settings > System > Developer options > USB debugging: On", "Settings > System > Developer options > USB debugging: B\xE1\xBA\xADt"},
+        {"Tap Build number 7 times", "Ch\xE1\xBA\xA1m Build number 7 l\xE1\xBA\xA7n"},
+        {"Waiting for a phone", "\xC4\x90""ang ch\xE1\xBB\x9D \xC4\x91i\xE1\xBB\x87n tho\xE1\xBA\xA1i"},
+        {"Screen Mirroring, then pick PhoneMimi", "Ph\xE1\xBA\xA3n chi\xE1\xBA\xBFu m\xC3\xA0n h\xC3\xACnh, r\xE1\xBB\x93i ch\xE1\xBB\x8Dn PhoneMimi"},
+        {"Plug in a USB cable, or press A", "C\xE1\xBA\xAFm d\xC3\xA2y USB, ho\xE1\xBA\xB7""c nh\xE1\xBA\xA5n A"},
+        {"Add Android phone", "Th\xC3\xAAm \xC4\x91i\xE1\xBB\x87n tho\xE1\xBA\xA1i Android"},
+        {"NEARBY", "G\xE1\xBA\xA6N \xC4\x90\xC3\x82Y"},
+        {"Scanning", "\xC4\x90""ang t\xC3\xACm"},
+        {"No phones yet. Turn on Wireless debugging.", "Ch\xC6\xB0""a th\xE1\xBA\xA5y m\xC3\xA1y n\xC3\xA0o. B\xE1\xBA\xADt G\xE1\xBB\xA1 l\xE1\xBB\x97i kh\xC3\xB4ng d\xC3\xA2y."},
+        {"IP address", "\xC4\x90\xE1\xBB\x8B""a ch\xE1\xBB\x89 IP"},
+        {"Connect port", "C\xE1\xBB\x95ng k\xE1\xBA\xBFt n\xE1\xBB\x91i"},
+        {"Pair port", "C\xE1\xBB\x95ng gh\xC3\xA9p"},
+        {"Pairing code", "M\xC3\xA3 gh\xC3\xA9p"},
+        {"QR code", "M\xC3\xA3 QR"},
+        {"USB cable", "D\xC3\xA2y USB"},
+        {"Connect", "K\xE1\xBA\xBFt n\xE1\xBB\x91i"},
+        {"Connecting...", "\xC4\x90""ang k\xE1\xBA\xBFt n\xE1\xBB\x91i..."},
+        {"Settings (S)", "C\xC3\xA0i \xC4\x91\xE1\xBA\xB7t (S)"},
+        {"Mute phone", "T\xE1\xBA\xAFt ti\xE1\xBA\xBFng \xC4\x91i\xE1\xBB\x87n tho\xE1\xBA\xA1i"},
+        {"Volume up", "T\xC4\x83ng \xC3\xA2m l\xC6\xB0\xE1\xBB\xA3ng"},
+        {"Volume down", "Gi\xE1\xBA\xA3m \xC3\xA2m l\xC6\xB0\xE1\xBB\xA3ng"},
+        {"Power", "Ngu\xE1\xBB\x93n"},
+        {"Mute: use the phone", "T\xE1\xBA\xAFt ti\xE1\xBA\xBFng: d\xC3\xB9ng n\xC3\xBAt tr\xC3\xAAn \xC4\x91i\xE1\xBB\x87n tho\xE1\xBA\xA1i"},
+        {"Volume: use the phone", "\xC3\x82m l\xC6\xB0\xE1\xBB\xA3ng: d\xC3\xB9ng n\xC3\xBAt tr\xC3\xAAn \xC4\x91i\xE1\xBB\x87n tho\xE1\xBA\xA1i"},
+        {"Power: use the phone", "Ngu\xE1\xBB\x93n: d\xC3\xB9ng n\xC3\xBAt tr\xC3\xAAn \xC4\x91i\xE1\xBB\x87n tho\xE1\xBA\xA1i"},
+        {"Tips", "M\xE1\xBA\xB9o"},
+        {"Mouse and keyboard", "Chu\xE1\xBB\x99t v\xC3\xA0 b\xC3\xA0n ph\xC3\xADm"},
+        {"Click and scroll like touch. Type on the PC keyboard (Ctrl+K).", "B\xE1\xBA\xA5m v\xC3\xA0 cu\xE1\xBB\x99n nh\xC6\xB0 ch\xE1\xBA\xA1m tay. G\xC3\xB5 b\xE1\xBA\xB1ng b\xC3\xA0n ph\xC3\xADm PC (Ctrl+K)."},
+        {"Clipboard sync", "\xC4\x90\xE1\xBB\x93ng b\xE1\xBB\x99 clipboard"},
+        {"Copy on the phone or the PC, paste on the other.", "Sao ch\xC3\xA9p tr\xC3\xAAn \xC4\x91i\xE1\xBB\x87n tho\xE1\xBA\xA1i ho\xE1\xBA\xB7""c PC, d\xC3\xA1n b\xC3\xAAn kia."},
+        {"Drag and drop files", "K\xC3\xA9o th\xE1\xBA\xA3 file"},
+        {"Drop an APK to install it, other files go to Download.", "Th\xE1\xBA\xA3 file APK \xC4\x91\xE1\xBB\x83 c\xC3\xA0i, file kh\xC3\xA1""c v\xC3\xA0o th\xC6\xB0 m\xE1\xBB\xA5""c Download."},
+        {"Got it", "\xC4\x90\xC3\xA3 hi\xE1\xBB\x83u"}
+    };
+    auto it = kVi.find(en);
+    return it == kVi.end() ? en : it->second;
 }
 
 // Measures cached text (ink width, line height).
@@ -1753,6 +1866,15 @@ void Renderer::run() {
                 break;
 
             case SDL_MOUSEBUTTONDOWN:
+                // Tips card: X or "Got it" closes it; other clicks pass.
+                if (tips_visible_ && event.button.button == SDL_BUTTON_LEFT) {
+                    int mx = event.button.x, my = event.button.y;
+                    auto in = [&](const BtnRect& r) {
+                        return r.w > 0 && in_rect(mx, my, r.x, r.y, r.w, r.h);
+                    };
+                    if (in(tips_close_btn_) || in(tips_ok_btn_)) { tips_visible_ = false; break; }
+                    if (in(tips_rect_)) break;
+                }
                 // The setup guide takes every left click while open: tabs
                 // inside it, and close on its button or anywhere outside.
                 if (setup_guide_visible_ && event.button.button == SDL_BUTTON_LEFT) {
@@ -2476,6 +2598,12 @@ void Renderer::run() {
                                     info_panel_anim_start_ = std::chrono::steady_clock::now();
                                 }
                             }
+                            for (int i = 0; i < 2; ++i)
+                                if (hit(settings_seg_lang_btns_[i]) && settings_.language != i) {
+                                    settings_.language = i;
+                                    g_lang_vi = i == 1;
+                                    settings_.save();
+                                }
                             if (hit(settings_toggle_mutephone_btn_)) {
                                 settings_.android_mute_phone = !settings_.android_mute_phone;
                                 settings_.save();
@@ -2997,10 +3125,9 @@ void Renderer::render_frame() {
             last_synced_clip_ = clip;
             SDL_SetClipboardText(clip.c_str());
         }
+        g_lang_vi = settings_.language == 1;
         if (!settings_.tip_drop_shown && ever_received_frame_ && android_input_active_()) {
-            toast_text_ = "Tip: drop files here to install or send them";
-            toast_active_ = true;
-            toast_start_ = std::chrono::steady_clock::now();
+            tips_visible_ = true;   // first Android phone: show the tips card
             settings_.tip_drop_shown = true;
             settings_.save();
         }
@@ -3556,11 +3683,11 @@ void Renderer::render_frame() {
                                  244, 246, 248, 255, mcx, ty, 1, 800);
             int sub_px = (int)(u * 0.040f);
             int sw = 0, sh = 0;
-            measure_text_c(sdl_renderer_, "Waiting for a phone", sub_px, &sw, &sh);
+            measure_text_c(sdl_renderer_, tr("Waiting for a phone"), sub_px, &sw, &sh);
             int dot_r = std::max(2, sub_px / 7), dots_w = dot_r * 2 * 3 + dot_r * 2 * 2;
             int sx = mcx - (sw + dot_r * 3 + dots_w) / 2;
             int sy = ty + th + (int)(u * 0.012f);
-            draw_text_c(sdl_renderer_, "Waiting for a phone", sub_px, 154, 167, 186, 255, sx, sy, 0);
+            draw_text_c(sdl_renderer_, tr("Waiting for a phone"), sub_px, 154, 167, 186, 255, sx, sy, 0);
             for (int i = 0; i < 3; ++i) {
                 float ph = std::fmod(ms / 1400.0f - i * 0.14f, 1.0f);
                 if (ph < 0) ph += 1.0f;
@@ -3604,8 +3731,8 @@ void Renderer::render_frame() {
                 draw_text_mid(sdl_renderer_, line, lpx, 154, 167, 186, 255, text_x, tmid + lpx * 7 / 10, 0);
                 card_y += card_h + (int)(u * 0.035f);
             };
-            draw_card(lucide::Smartphone, false, "iPhone", "Screen Mirroring, then pick PhoneMimi");
-            draw_card(lucide::Usb, true, "Android", "Plug in a USB cable, or press A");
+            draw_card(lucide::Smartphone, false, "iPhone", tr("Screen Mirroring, then pick PhoneMimi"));
+            draw_card(lucide::Usb, true, "Android", tr("Plug in a USB cable, or press A"));
             SDL_RenderSetClipRect(sdl_renderer_, nullptr);
         }
 #endif
@@ -3630,9 +3757,8 @@ void Renderer::render_frame() {
     if (settings_panel_visible_ || settings_panel_animating_) draw_settings_panel();
     if (android_panel_visible_ || android_panel_animating_) draw_android_panel();
     if (setup_guide_visible_) draw_setup_guide_();
+    if (tips_visible_) draw_tips_();
 
-    // Island bar (behind frame — slides behind bezel)
-    if (island_anim_ > 0.01f) draw_island();
 
     std::string bezel_hover_key;
     std::string bezel_hover_text;
@@ -3746,8 +3872,11 @@ void Renderer::render_frame() {
         int dot_r = std::max(2, ui_ref_width() / 175);
         int star_cx = frame_dst_x_ + frame_dst_w_ / 2;
         int star_cy = frame_dst_y_ + bezel_top / 2;
-        int hit_sz = std::max(24, dot_r * 9);
-        menu_btn_ = {star_cx - hit_sz / 2, star_cy - hit_sz / 2, hit_sz, hit_sz};
+        // A horizontal bar inside the top bezel; the whole bezel strip
+        // around it is the click target.
+        int pill_w = std::max(28, frame_dst_w_ * 22 / 100);
+        int pill_h = std::max(5, bezel_top * 36 / 100);
+        menu_btn_ = {star_cx - pill_w / 2 - 8, frame_dst_y_, pill_w + 16, std::max(14, bezel_top)};
 
         int smx, smy;
         SDL_GetMouseState(&smx, &smy);
@@ -3757,11 +3886,19 @@ void Renderer::render_frame() {
 
         // Settings: the one button on the frame (everything else lives
         // inside the Settings panel).
-        int g_sz = std::max(8, dot_r * 6);
-        draw_glyph(sdl_renderer_, lucide::Settings, star_cx, star_cy, g_sz * 2, 220, 224, 230, sa);
+        SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
+        if (star_hover) {
+            const Accent& sac = accent_for(settings_.accent_color);
+            SDL_SetRenderDrawColor(sdl_renderer_, sac.lr, sac.lg, sac.lb, 255);
+        } else {
+            SDL_SetRenderDrawColor(sdl_renderer_, 205, 210, 218, 150);
+        }
+        fill_round_rect(sdl_renderer_, star_cx - pill_w / 2, star_cy - pill_h / 2, pill_w, pill_h,
+                        pill_h / 2);
+        (void)sa;
         if (star_hover) {
             bezel_hover_key = "menu";
-            bezel_hover_text = "Settings (S)";
+            bezel_hover_text = tr("Settings (S)");
             bezel_hover_ax = star_cx;
             bezel_hover_ay = star_cy + dot_r + 4;
         }
@@ -4774,273 +4911,6 @@ void Renderer::draw_bezel_tooltip(const std::string& text, int anchor_x, int anc
     }
 }
 
-void Renderer::draw_island() {
-    if (frame_dst_w_ == 0) return;
-
-    float scale = (float)frame_dst_w_ / phone_frame_.frame_width();
-    int svx = frame_dst_x_ + (int)(phone_frame_.screen_x() * scale);
-    int svy = frame_dst_y_ + (int)(phone_frame_.screen_y() * scale);
-    int svw = (int)(phone_frame_.screen_width() * scale);
-
-    // Use the shared phone-equivalent reference (capped) so the island
-    // stays the same neat size regardless of source device — same recipe
-    // applied to the info/version/settings panels and bezel popups.
-    int phone_eq_w = ui_ref_width();
-    int btn_sz = std::max(20, phone_eq_w / 14);
-    int pad = btn_sz / 3;
-    int row_h = btn_sz + pad * 2;
-
-    // Apply slide animation offset
-    int slide_offset = -(int)((1.0f - island_anim_) * (row_h + pad * 2));
-    svy += slide_offset;
-
-    // Toast area
-    bool show_toast = false;
-    int toast_h = 0;
-    if (toast_active_) {
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - toast_start_).count();
-        if (elapsed < toast_duration_ms_) {
-            show_toast = true;
-            toast_h = std::max(14, btn_sz / 2) + pad;
-        } else {
-            toast_active_ = false;
-        }
-    }
-
-    int island_w = std::max(160, (int)(phone_eq_w * 0.80f));
-    int island_h = row_h + (show_toast ? toast_h : 0);
-    int island_x = svx + (svw - island_w) / 2;
-    int island_y = svy + pad;
-
-    // Pill background. We temporarily switch the renderer to BLENDMODE_NONE
-    // so the rounded end caps overwrite the body rect at their overlap
-    // instead of alpha-compounding into a visible darker semi-circle.
-    int pill_r = row_h / 2;
-    SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_NONE);
-    SDL_SetRenderDrawColor(sdl_renderer_, 20, 20, 22, 200);
-    SDL_Rect body = {island_x + pill_r, island_y, island_w - pill_r * 2, island_h};
-    SDL_RenderFillRect(sdl_renderer_, &body);
-    fill_circle(sdl_renderer_, island_x + pill_r, island_y + pill_r, pill_r);
-    fill_circle(sdl_renderer_, island_x + island_w - pill_r, island_y + pill_r, pill_r);
-    if (island_h > row_h) {
-        SDL_Rect ext = {island_x, island_y + pill_r, island_w, island_h - pill_r};
-        SDL_RenderFillRect(sdl_renderer_, &ext);
-        int br = std::min(pill_r, (island_h - row_h + pill_r));
-        fill_circle(sdl_renderer_, island_x + br, island_y + island_h - br, br);
-        fill_circle(sdl_renderer_, island_x + island_w - br, island_y + island_h - br, br);
-        SDL_Rect bb = {island_x + br, island_y + island_h - br, island_w - br * 2, br};
-        SDL_RenderFillRect(sdl_renderer_, &bb);
-    }
-    // Restore alpha blending for everything that follows (buttons, icons,
-    // text) so they composite correctly over the pill.
-    SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
-
-    int mx, my;
-    SDL_GetMouseState(&mx, &my);
-
-    // Icon (left side)
-    int icon_sz = btn_sz - 4;
-    int icon_x = island_x + pad + 2;
-    int icon_y = island_y + (row_h - icon_sz) / 2;
-    {
-        bool ih = in_rect(mx, my, icon_x, icon_y, icon_sz, icon_sz);
-        const Accent& ac = accent_for(settings_.accent_color);
-        SDL_SetRenderDrawColor(sdl_renderer_, ac.r, ac.g, ac.b, ih ? 70 : 46);
-        fill_round_rect(sdl_renderer_, icon_x, icon_y, icon_sz, icon_sz, icon_sz / 3);
-        draw_glyph(sdl_renderer_, lucide::Smartphone, icon_x + icon_sz / 2, icon_y + icon_sz / 2,
-                   icon_sz * 6 / 10, ac.lr, ac.lg, ac.lb, 255);
-    }
-    icon_btn_ = {icon_x, icon_y, icon_sz, icon_sz};
-    bool icon_hover = in_rect(mx, my, icon_x, icon_y, icon_sz, icon_sz);
-    bool gear_hover = false;
-
-    // Settings (gear) button — placed to the right of the icon, far away from
-    // the screenshot button on the right cluster so they cannot be confused.
-    // The gear is intentionally smaller and dimmer than the right-cluster
-    // buttons so it reads as a secondary, low-emphasis control.
-    int gear_sz = std::max(16, btn_sz * 4 / 5);
-    int by_left = island_y + (row_h - gear_sz) / 2;
-    int gear_x = icon_x + icon_sz + std::max(4, pad / 2);
-    settings_btn_ = {gear_x, by_left, gear_sz, gear_sz};
-    {
-        bool gh = in_rect(mx, my, gear_x, by_left, gear_sz, gear_sz);
-        // Background pill — slightly transparent so it recedes into the island.
-        if (gh || settings_panel_visible_) {
-            SDL_SetRenderDrawColor(sdl_renderer_, 255, 255, 255, gh ? 26 : 20);
-            fill_round_rect(sdl_renderer_, gear_x, by_left, gear_sz, gear_sz, gear_sz / 3);
-        }
-        draw_glyph(sdl_renderer_, lucide::Settings, gear_x + gear_sz / 2, by_left + gear_sz / 2,
-                   gear_sz * 11 / 20, 230, 234, 240, gh ? 255 : 210);
-        gear_hover = gh;
-    }
-
-    // Buttons (right-aligned): screenshot, folder, close
-    int bx = island_x + island_w - pad - btn_sz;
-    int by = island_y + (row_h - btn_sz) / 2;
-    int gap = pad / 2 + 2;
-
-    auto now = std::chrono::steady_clock::now();
-    bool flashing = btn_flash_ &&
-        std::chrono::duration_cast<std::chrono::milliseconds>(now - btn_flash_start_).count() < 200;
-    if (btn_flash_ &&
-        std::chrono::duration_cast<std::chrono::milliseconds>(now - btn_flash_start_).count() >= 200)
-        btn_flash_ = false;
-
-    // Close button (rightmost)
-    close_btn_ = {bx, by, btn_sz, btn_sz};
-    bool close_hover = in_rect(mx, my, bx, by, btn_sz, btn_sz);
-    if (close_hover) {
-        SDL_SetRenderDrawColor(sdl_renderer_, 255, 90, 95, 60);
-        fill_round_rect(sdl_renderer_, bx, by, btn_sz, btn_sz, btn_sz / 3);
-    }
-    draw_glyph(sdl_renderer_, lucide::X, bx + btn_sz / 2, by + btn_sz / 2,
-               btn_sz * 11 / 22, 201, 209, 220, close_hover ? 255 : 230);
-
-    // Folder button
-    bx -= btn_sz + gap;
-    folder_btn_ = {bx, by, btn_sz, btn_sz};
-    bool folder_hover = in_rect(mx, my, bx, by, btn_sz, btn_sz);
-    if (folder_hover) {
-        SDL_SetRenderDrawColor(sdl_renderer_, 255, 255, 255, 22);
-        fill_round_rect(sdl_renderer_, bx, by, btn_sz, btn_sz, btn_sz / 3);
-    }
-    draw_glyph(sdl_renderer_, lucide::Folder, bx + btn_sz / 2, by + btn_sz / 2,
-               btn_sz * 11 / 22, 201, 209, 220, folder_hover ? 255 : 230);
-
-    // Record button (to the right of the photo button — sits between
-    // folder and screenshot in the right-to-left cluster).
-    bx -= btn_sz + gap;
-    record_btn_ = {bx, by, btn_sz, btn_sz};
-    bool rec_hover = in_rect(mx, my, bx, by, btn_sz, btn_sz);
-    bool rec_active = recorder_.is_recording();
-    bool rec_count  = (record_countdown_ms_ > 0 && !rec_active);
-    // Pulsing red while recording (200 ms cosine breathing).
-    float rec_pulse = 1.0f;
-    if (rec_active) {
-        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            now - btn_flash_start_).count(); // any monotonic reference
-        rec_pulse = 0.55f + 0.45f * (float)std::abs(std::sin(ms * 0.005));
-    }
-    if (rec_active || rec_hover) {
-        if (rec_active) SDL_SetRenderDrawColor(sdl_renderer_, 255, 90, 95, (uint8_t)(40 + 50 * rec_pulse));
-        else            SDL_SetRenderDrawColor(sdl_renderer_, 255, 255, 255, 22);
-        fill_round_rect(sdl_renderer_, bx, by, btn_sz, btn_sz, btn_sz / 3);
-    }
-    {
-        int rcx = bx + btn_sz / 2, rcy = by + btn_sz / 2;
-        int gpx = btn_sz * 12 / 22;
-        if (rec_active) {
-            draw_glyph(sdl_renderer_, lucide::Square, rcx, rcy, gpx, 255, 110, 110, 255);
-        } else {
-            // Lucide circle ring with a solid dot inside, as in the mockup.
-            draw_glyph(sdl_renderer_, lucide::Circle, rcx, rcy, gpx, 201, 209, 220,
-                       rec_hover ? 255 : 230);
-            if (rec_count) SDL_SetRenderDrawColor(sdl_renderer_, 245, 245, 245, 235);
-            else           SDL_SetRenderDrawColor(sdl_renderer_, 255, 90, 95, 255);
-            fill_circle(sdl_renderer_, rcx, rcy, std::max(2, gpx / 5));
-        }
-    }
-
-    // Screenshot button — filled white dot, mirroring the record button's
-    // visual language so the two camera/record affordances read as a pair.
-    bx -= btn_sz + gap;
-    screenshot_btn_ = {bx, by, btn_sz, btn_sz};
-    bool ss_hover = in_rect(mx, my, bx, by, btn_sz, btn_sz);
-    if (flashing || ss_hover) {
-        SDL_SetRenderDrawColor(sdl_renderer_, 255, 255, 255, flashing ? 200 : 22);
-        fill_round_rect(sdl_renderer_, bx, by, btn_sz, btn_sz, btn_sz / 3);
-    }
-    int sscx = bx + btn_sz / 2, sscy = by + btn_sz / 2;
-    draw_glyph(sdl_renderer_, lucide::Camera, sscx, sscy, btn_sz * 12 / 22,
-               flashing ? 20 : 201, flashing ? 20 : 209, flashing ? 20 : 220,
-               ss_hover || flashing ? 255 : 230);
-
-    // Settings (gear) button is now drawn next to the icon on the LEFT side
-    // (see block above). The right-cluster ends here with the screenshot button.
-
-    // Hover detection (0=close, 1=screenshot, 2=folder, 3=icon)
-    int new_hover = -1;
-    if (close_hover) new_hover = 0;
-    else if (ss_hover) new_hover = 1;
-    else if (folder_hover) new_hover = 2;
-    else if (icon_hover) new_hover = 3;
-    else if (gear_hover) new_hover = 6;
-    else if (rec_hover) new_hover = 7;
-
-    // Tooltip — use the same draw_bezel_tooltip() as the bezel dots so the
-    // styling, font size, edge-clamping and 1 s hover delay are identical
-    // everywhere. Anchor below the mouse cursor so it never covers the
-    // button being explained.
-    if (new_hover >= 0 &&
-        tooltip_ready("island:" + std::to_string(new_hover))) {
-        const char* tip = nullptr;
-        switch (new_hover) {
-            case 0: tip = "Close (Esc)";              break;
-            case 1: tip = "Screenshot (Ctrl+S)";      break;
-            case 2: tip = "Open Screenshots Folder";  break;
-            case 3: tip = "About PhoneMimi (I)"; break;
-            case 6: tip = "Settings (S)"; break;
-            case 7: {
-                static std::string rec_tip;
-                if (recorder_.is_recording()) {
-                    int s = (int)recorder_.elapsed_seconds();
-                    char buf[64];
-                    std::snprintf(buf, sizeof(buf), "Stop recording - %d:%02d (Ctrl+R)\nRight-click for delay/timed", s / 60, s % 60);
-                    rec_tip = buf;
-                } else if (record_countdown_ms_ > 0) {
-                    rec_tip = "Cancel countdown";
-                } else {
-                    rec_tip = "Record (Ctrl+R)\nRight-click for delay/timed";
-                }
-                tip = rec_tip.c_str();
-                break;
-            }
-        }
-        if (tip) {
-            // Anchor at the cursor, force tooltip BELOW so it never
-            // covers the button being explained.
-            draw_bezel_tooltip(tip, mx, my, /*prefer_below=*/true);
-        }
-    } else if (new_hover < 0 &&
-               hover_key_.rfind("island:", 0) == 0) {
-        // Reset the 1 s timer when the cursor leaves all island buttons.
-        hover_key_.clear();
-    }
-
-    // Toast text (in island, below button row)
-    if (show_toast) {
-#ifdef _WIN32
-        if (toast_tex_str_ != toast_text_) {
-            if (toast_tex_) { SDL_DestroyTexture(toast_tex_); toast_tex_ = nullptr; }
-            int fh_toast = std::max(28, btn_sz * 2);
-            toast_tex_ = make_text_texture(sdl_renderer_, toast_text_, fh_toast,
-                                            220, 220, 220, &toast_tex_w_, &toast_tex_h_);
-            toast_tex_str_ = toast_text_;
-        }
-#endif
-        if (toast_tex_) {
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                now - toast_start_).count();
-            uint8_t alpha = 255;
-            if (elapsed < 150) alpha = (uint8_t)(elapsed * 255 / 150);
-            else if (elapsed > toast_duration_ms_ - 300)
-                alpha = (uint8_t)((toast_duration_ms_ - elapsed) * 255 / 300);
-            SDL_SetTextureAlphaMod(toast_tex_, alpha);
-            float t_scale = (float)std::max(11, btn_sz / 2) / std::max(28, btn_sz * 2);
-            int disp_tw = (int)(toast_tex_w_ * t_scale);
-            int disp_th = (int)(toast_tex_h_ * t_scale);
-            int ttx = island_x + (island_w - disp_tw) / 2;
-            int tty = island_y + row_h + (toast_h - disp_th) / 2;
-            SDL_Rect tdst = {ttx, tty, disp_tw, disp_th};
-            SDL_RenderCopy(sdl_renderer_, toast_tex_, nullptr, &tdst);
-            SDL_SetTextureAlphaMod(toast_tex_, 255);
-        }
-    }
-
-    hover_btn_ = new_hover;
-}
-
 void Renderer::draw_footer(int svx, int svy, int svw, int svh) {
     footer_hits_.clear();
     if (footer_line3_.empty()) return;
@@ -5827,28 +5697,28 @@ void Renderer::draw_setup_guide_() {
     int pr      = std::max(14, pad);
     const uint8_t alpha = 255;
 
-    static const char* const kTabs[4] = {"Samsung", "Xiaomi", "OPPO", "Other"};
-    static const std::vector<std::vector<std::string>> kSteps = {
+    const char* const kTabs[4] = {"Samsung", "Xiaomi", "OPPO", tr("Other")};
+    const std::vector<std::vector<std::string>> kSteps = {
         {"Settings > About phone > Software information",
-         "Tap Build number 7 times, then enter your PIN",
-         "Settings > Developer options > USB debugging: On"},
+         tr("Tap Build number 7 times, then enter your PIN"),
+         tr("Settings > Developer options > USB debugging: On")},
         {"Settings > About phone",
-         "Tap OS version 7 times",
+         tr("Tap OS version 7 times"),
          "Settings > Additional settings > Developer options",
-         "Turn on USB debugging and USB debugging (Security settings), then restart the phone"},
+         tr("Turn on USB debugging and USB debugging (Security settings), then restart the phone")},
         {"Settings > About device > Version",
-         "Tap Build number 7 times",
-         "Settings > Additional settings > Developer options > USB debugging: On"},
+         tr("Tap Build number 7 times"),
+         tr("Settings > Additional settings > Developer options > USB debugging: On")},
         {"Settings > About phone",
-         "Tap Build number 7 times",
-         "Settings > System > Developer options > USB debugging: On"},
+         tr("Tap Build number 7 times"),
+         tr("Settings > System > Developer options > USB debugging: On")},
     };
     const int hint = setup_hint_.load();
     const char* status =
-        hint == 1 ? "Phone found. Turn on USB debugging:" :
-        hint == 2 ? "Unlock the phone and tap Allow (tick Always allow)." :
-        hint == 3 ? "iPhone needs no cable: Control Center > Screen Mirroring > PhoneMimi." :
-                    "Turn on USB debugging, then plug in the cable.";
+        hint == 1 ? tr("Phone found. Turn on USB debugging:") :
+        hint == 2 ? tr("Unlock the phone and tap Allow (tick Always allow).") :
+        hint == 3 ? tr("iPhone needs no cable: Control Center > Screen Mirroring > PhoneMimi.") :
+                    tr("Turn on USB debugging, then plug in the cable.");
     const bool show_steps = hint == 0 || hint == 1;
     setup_guide_tab_ = std::clamp(setup_guide_tab_, 0, 3);
 
@@ -5914,7 +5784,7 @@ void Renderer::draw_setup_guide_() {
         int sz = title_h + 8;
         setup_guide_close_btn_ = {panel_x + panel_w - pad - sz, mid - sz / 2, sz, sz};
         int title_x = panel_x + pad + tile + tile / 3;
-        const char* title = "Connect with a cable";
+        const char* title = tr("Connect with a cable");
         draw_text_mid(sdl_renderer_, title,
                       fit_text_px(sdl_renderer_, title, title_h, setup_guide_close_btn_.x - 6 - title_x, 700),
                       244, 246, 248, alpha, title_x, mid, 0, 700);
@@ -5966,9 +5836,102 @@ void Renderer::draw_setup_guide_() {
         }
     }
     cy += gap;
-    draw_text_mid(sdl_renderer_, "Then plug in the cable and tap Allow on the phone.",
-                  fit_text_px(sdl_renderer_, "Then plug in the cable and tap Allow on the phone.", note_h, content_w, 500),
+    draw_text_mid(sdl_renderer_, tr("Then plug in the cable and tap Allow on the phone."),
+                  fit_text_px(sdl_renderer_, tr("Then plug in the cable and tap Allow on the phone."), note_h, content_w, 500),
                   150, 154, 162, alpha, panel_x + pad, cy + note_h / 2, 0, 500);
+}
+
+// First-connect tips: three cards, closed with X or "Got it". Shown once.
+void Renderer::draw_tips_() {
+    if (frame_dst_w_ == 0) return;
+    float scale = (float)frame_dst_w_ / phone_frame_.frame_width();
+    int svx = frame_dst_x_ + (int)(phone_frame_.screen_x() * scale);
+    int svy = frame_dst_y_ + (int)(phone_frame_.screen_y() * scale);
+    int svw = (int)(phone_frame_.screen_width() * scale);
+    int svh = (int)(phone_frame_.screen_height() * scale);
+    int uw = ui_ref_width();
+    int pad = std::max(12, uw / 16), gap = std::max(8, pad * 2 / 3);
+    int title_h = std::max(15, uw / 20), label_h = std::max(11, uw / 30);
+    int note_h = std::max(10, label_h * 4 / 5);
+    int pr = std::max(14, pad);
+    int panel_w = (std::min)((int)(svw * 0.9f), (int)(uw * 1.7f));
+    int panel_x = svx + (svw - panel_w) / 2;
+    const Accent& ac = accent_for(settings_.accent_color);
+
+    struct Tip { wchar_t icon; const char* title; const char* body; };
+    const Tip tips[3] = {
+        {0xE28D, tr("Mouse and keyboard"), tr("Click and scroll like touch. Type on the PC keyboard (Ctrl+K).")},
+        {0xE224, tr("Clipboard sync"), tr("Copy on the phone or the PC, paste on the other.")},
+        {0xE32A, tr("Drag and drop files"), tr("Drop an APK to install it, other files go to Download.")},
+    };
+    const int tile = label_h * 2 + 8;
+    const int text_x0 = pad + tile + gap;
+    const int text_w = panel_w - text_x0 - pad;
+    auto wrap = [&](const std::string& text, int px, int maxw) {
+        std::vector<std::string> lines;
+        std::string cur;
+        size_t i = 0;
+        while (i <= text.size()) {
+            size_t sp = text.find(' ', i);
+            if (sp == std::string::npos) sp = text.size();
+            std::string word = text.substr(i, sp - i);
+            std::string cand = cur.empty() ? word : cur + " " + word;
+            int w = 0, h = 0;
+            measure_text_c(sdl_renderer_, cand, px, &w, &h, 500);
+            if (!cur.empty() && w > maxw) { lines.push_back(cur); cur = word; }
+            else cur = cand;
+            i = sp + 1;
+        }
+        if (!cur.empty()) lines.push_back(cur);
+        return lines;
+    };
+    const int line_h = note_h * 135 / 100;
+    std::vector<std::vector<std::string>> bodies;
+    int cards_h = 0;
+    for (auto& t : tips) {
+        bodies.push_back(wrap(t.body, note_h, text_w));
+        cards_h += std::max(tile, label_h + 4 + (int)bodies.back().size() * line_h) + gap;
+    }
+    int btn_h = label_h + 14;
+    int total_h = pad + title_h + gap + cards_h + btn_h + pad;
+    int panel_y = svy + std::max(pad, (svh - total_h) / 2);
+    tips_rect_ = {panel_x, panel_y, panel_w, total_h};
+
+    int mx, my;
+    SDL_GetMouseState(&mx, &my);
+    ui_shell_(panel_x, panel_y, panel_w, total_h, pr);
+    int cy = panel_y + pad;
+    {
+        int mid = cy + title_h / 2;
+        draw_glyph(sdl_renderer_, 0xE416, panel_x + pad + title_h / 2, mid, title_h, ac.lr, ac.lg, ac.lb, 255);
+        draw_text_mid(sdl_renderer_, tr("Tips"), title_h, 244, 246, 248, 255,
+                      panel_x + pad + title_h + gap / 2, mid, 0, 700);
+        int sz = title_h + 8;
+        tips_close_btn_ = {panel_x + panel_w - pad - sz, mid - sz / 2, sz, sz};
+        ui_round_btn_(tips_close_btn_, lucide::X,
+                      in_rect(mx, my, tips_close_btn_.x, tips_close_btn_.y, sz, sz));
+    }
+    cy += title_h + gap;
+    for (int k = 0; k < 3; ++k) {
+        int ch = std::max(tile, label_h + 4 + (int)bodies[k].size() * line_h);
+        SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(sdl_renderer_, ac.r, ac.g, ac.b, 42);
+        fill_round_rect(sdl_renderer_, panel_x + pad, cy, tile, tile, tile / 3);
+        draw_glyph(sdl_renderer_, tips[k].icon, panel_x + pad + tile / 2, cy + tile / 2, tile / 2,
+                   ac.lr, ac.lg, ac.lb, 255);
+        draw_text_mid(sdl_renderer_, tips[k].title,
+                      fit_text_px(sdl_renderer_, tips[k].title, label_h, text_w, 700),
+                      236, 240, 246, 255, panel_x + text_x0, cy + label_h / 2 + 1, 0, 700);
+        int ty = cy + label_h + 4;
+        for (auto& l : bodies[k]) {
+            draw_text_mid(sdl_renderer_, l, note_h, 160, 166, 178, 255, panel_x + text_x0, ty + line_h / 2, 0, 500);
+            ty += line_h;
+        }
+        cy += ch + gap;
+    }
+    tips_ok_btn_ = {panel_x + pad, cy, panel_w - pad * 2, btn_h};
+    ui_pill_(tips_ok_btn_, tr("Got it"), 0, true,
+             in_rect(mx, my, tips_ok_btn_.x, tips_ok_btn_.y, tips_ok_btn_.w, tips_ok_btn_.h), 255);
 }
 
 void Renderer::draw_settings_panel() {
@@ -6025,7 +5988,7 @@ void Renderer::draw_settings_panel() {
 #endif
     // Phone: + the connected-phone row. Capture: + the two webcam rows.
     // Help: guide row, five tips, version/about row.
-    const int rows = tab == 0 ? 4 : tab == 1 ? phone_rows + 1 : tab == 2 ? (resize_on ? 9 : 7) : 7;
+    const int rows = tab == 0 ? 5 : tab == 1 ? phone_rows + 1 : tab == 2 ? (resize_on ? 9 : 7) : 7;
     const int act_h = row_h;   // quick-action buttons above the tabs
     int total_h = pad + title_h + gap + act_h + gap + tabs_h + gap + rows * row_h
                 + (tab == 1 ? gap + note_h : 0) + pad;
@@ -6049,6 +6012,7 @@ void Renderer::draw_settings_panel() {
     settings_toggle_kbd_btn_ = settings_toggle_scroff_btn_ = settings_toggle_paste_btn_ = {};
     settings_toggle_mcp_btn_ = settings_mcp_copy_btn_ = {};
     settings_toggle_mutephone_btn_ = {};
+    for (auto& b : settings_seg_lang_btns_) b = {};
     for (auto& b : settings_action_btns_) b = {};
     settings_dev_add_btn_ = settings_dev_disc_btn_ = {};
     settings_help_guide_btn_ = settings_help_ver_btn_ = settings_help_about_btn_ = {};
@@ -6081,7 +6045,7 @@ void Renderer::draw_settings_panel() {
     int cy = panel_y + pad;
 
     // Header: title + round close button.
-    text("Settings", title_h, panel_x + pad, cy + title_h / 2, 244, 246, 248, 0, 700);
+    text(tr("Settings"), title_h, panel_x + pad, cy + title_h / 2, 244, 246, 248, 0, 700);
     {
         int sz = title_h + 8;
         settings_close_btn_ = {panel_x + panel_w - pad - sz, cy + title_h / 2 - sz / 2, sz, sz};
@@ -6095,9 +6059,9 @@ void Renderer::draw_settings_panel() {
         static const wchar_t kIcons[7] = {lucide::Camera, lucide::Circle, lucide::Folder,
                                           lucide::ScrollText, lucide::ChartColumn,
                                           lucide::Webcam, lucide::Power};
-        static const char* const kTips[7] = {"Screenshot (Ctrl+S)", "Record (Ctrl+R)",
-                                             "Screenshots folder", "Log (L)", "Statistics (T)",
-                                             "Webcam (W)", "Quit PhoneMimi"};
+        const char* const kTips[7] = {tr("Screenshot (Ctrl+S)"), tr("Record (Ctrl+R)"),
+                                             tr("Screenshots folder"), tr("Log (L)"), tr("Statistics (T)"),
+                                             "Webcam (W)", tr("Quit PhoneMimi")};
         const int n = 7, content_w = panel_w - pad * 2;
         int sz = std::min(act_h, (content_w - (n - 1) * 6) / n);
         int sgap = n > 1 ? (content_w - n * sz) / (n - 1) : 0;
@@ -6120,7 +6084,7 @@ void Renderer::draw_settings_panel() {
 
     // Tab bar: segmented track with a sliding pill.
     {
-        static const char* const names[4] = {"General", "Phone", "Capture", "Help"};
+        const char* const names[4] = {tr("General"), tr("Phone"), tr("Capture"), tr("Help")};
         ui_segment_(panel_x + pad, cy, panel_w - pad * 2, tabs_h, names, 4, tab,
                     "settings.tabs", settings_tab_btns_, label_h, text_alpha);
     }
@@ -6216,14 +6180,18 @@ void Renderer::draw_settings_panel() {
             if (presets[i][0] == settings_.bezel_r && presets[i][1] == settings_.bezel_g &&
                 presets[i][2] == settings_.bezel_b) frame_sel = i;
         const uint8_t ring[3] = {ac.lr, ac.lg, ac.lb};
-        swatches("Frame colour", presets, 6, frame_sel, 0, ring);
+        swatches(tr("Frame colour"), presets, 6, frame_sel, 0, ring);
         uint8_t acc_cols[6][3];
         for (int i = 0; i < 6; ++i) {
             acc_cols[i][0] = kAccents[i].r; acc_cols[i][1] = kAccents[i].g; acc_cols[i][2] = kAccents[i].b;
         }
-        swatches("Accent colour", acc_cols, 6, settings_.accent_color, 100, ring);
-        settings_toggle_compname_btn_ = toggle("Computer name as receiver name", settings_.use_computer_name);
-        settings_toggle_log_btn_      = toggle("Save a log file", log_to_file_session_);
+        swatches(tr("Accent colour"), acc_cols, 6, settings_.accent_color, 100, ring);
+        {
+            const char* const langs[2] = {"English", "Ti\xE1\xBA\xBFng Vi\xE1\xBB\x87t"};
+            segment(tr("Language"), langs, 2, settings_.language, settings_seg_lang_btns_);
+        }
+        settings_toggle_compname_btn_ = toggle(tr("Computer name as receiver name"), settings_.use_computer_name);
+        settings_toggle_log_btn_      = toggle(tr("Save a log file"), log_to_file_session_);
     } else if (tab == 1) {
         {
             // The phone on screen, with Add / Disconnect.
@@ -6235,41 +6203,41 @@ void Renderer::draw_settings_panel() {
                     if (s.active) { dev_name = s.name; settings_dev_id_ = s.id; }
             int ph = label_h + 10, pw = label_h * 5;
             BtnRect add{card_x + card_w - inner - pw, y + (row_h - ph) / 2, pw, ph};
-            ui_pill_(add, "Add", lucide::Plus, false, in_rect(mx, my, add.x, add.y, add.w, add.h), text_alpha);
+            ui_pill_(add, tr("Add"), lucide::Plus, false, in_rect(mx, my, add.x, add.y, add.w, add.h), text_alpha);
             settings_dev_add_btn_ = add;
             int right = add.x - 6;
             if (!settings_dev_id_.empty() && disconnect_source_fn_) {
                 int dw = label_h * 7;
                 BtnRect dc{add.x - 6 - dw, add.y, dw, ph};
-                ui_pill_(dc, "Disconnect", 0, false, in_rect(mx, my, dc.x, dc.y, dc.w, dc.h), text_alpha);
+                ui_pill_(dc, tr("Disconnect"), 0, false, in_rect(mx, my, dc.x, dc.y, dc.w, dc.h), text_alpha);
                 settings_dev_disc_btn_ = dc;
                 right = dc.x - 6;
             }
-            std::string label = dev_name.empty() ? "No phone connected" : dev_name;
+            std::string label = dev_name.empty() ? tr("No phone connected") : dev_name;
             text(label, fit_text_px(sdl_renderer_, label, label_h, right - card_x - inner * 2), card_x + inner,
                  y + row_h / 2, dev_name.empty() ? 150 : 230, dev_name.empty() ? 154 : 234,
                  dev_name.empty() ? 162 : 240, 0);
         }
-        settings_toggle_usb_btn_     = toggle("Auto-connect over USB", settings_.android_auto_usb);
-        settings_toggle_kbd_btn_     = toggle("Type from this keyboard", settings_.android_keyboard_on);
-        settings_toggle_paste_btn_   = toggle("Type by pasting", settings_.android_type_via_paste);
-        settings_toggle_softkbd_btn_ = toggle("Hide the phone keyboard", settings_.android_hide_soft_keyboard);
-        settings_toggle_scroff_btn_  = toggle("Phone screen off", settings_.android_screen_off);
-        settings_toggle_mutephone_btn_ = toggle("Mute phone speaker", settings_.android_mute_phone);
-        static const char* const res_opts[3] = {"Max", "1920", "1280"};
+        settings_toggle_usb_btn_     = toggle(tr("Auto-connect over USB"), settings_.android_auto_usb);
+        settings_toggle_kbd_btn_     = toggle(tr("Type from this keyboard"), settings_.android_keyboard_on);
+        settings_toggle_paste_btn_   = toggle(tr("Type by pasting"), settings_.android_type_via_paste);
+        settings_toggle_softkbd_btn_ = toggle(tr("Hide the phone keyboard"), settings_.android_hide_soft_keyboard);
+        settings_toggle_scroff_btn_  = toggle(tr("Phone screen off"), settings_.android_screen_off);
+        settings_toggle_mutephone_btn_ = toggle(tr("Mute phone speaker"), settings_.android_mute_phone);
+        const char* const res_opts[3] = {tr("Max"), "1920", "1280"};
         static const int res_vals[3] = {0, 1920, 1280};
-        segment("Resolution", res_opts, 3,
+        segment(tr("Resolution"), res_opts, 3,
                 index_of(res_vals, 3, settings_.android_max_size), settings_seg_res_btns_);
-        static const char* const fps_opts[3] = {"Max", "60", "30"};
+        const char* const fps_opts[3] = {tr("Max"), "60", "30"};
         static const int fps_vals[3] = {0, 60, 30};
-        segment("Frame rate", fps_opts, 3,
+        segment(tr("Frame rate"), fps_opts, 3,
                 index_of(fps_vals, 3, settings_.android_max_fps), settings_seg_fps_btns_);
         static const char* const ios_opts[2] = {"60", "30"};
         static const int ios_vals[2] = {60, 30};
-        segment("iPhone frame rate", ios_opts, 2,
+        segment(tr("iPhone frame rate"), ios_opts, 2,
                 index_of(ios_vals, 2, settings_.airplay_max_fps), settings_seg_ios_fps_btns_);
 #ifdef ENABLE_MCP
-        settings_toggle_mcp_btn_ = toggle("Claude control (MCP)", settings_.mcp_enabled);
+        settings_toggle_mcp_btn_ = toggle(tr("Claude control (MCP)"), settings_.mcp_enabled);
         if (settings_.mcp_enabled) {
             // Server status on the left, "Copy command" on the right.
             int y = begin_row(false);
@@ -6281,7 +6249,7 @@ void Renderer::draw_settings_panel() {
             bool copied = std::chrono::steady_clock::now() - mcp_copied_at_ < std::chrono::milliseconds(1500);
             int ph = label_h + 10, pw = std::min(label_h * 8, card_w / 2);
             BtnRect pill{card_x + card_w - inner - pw, y + (row_h - ph) / 2, pw, ph};
-            ui_pill_(pill, copied ? "Copied" : "Copy command", copied ? lucide::Check : 0, false,
+            ui_pill_(pill, copied ? tr("Copied") : tr("Copy command"), copied ? lucide::Check : 0, false,
                      in_rect(mx, my, pill.x, pill.y, pill.w, pill.h), text_alpha);
             settings_mcp_copy_btn_ = pill;
             int avail = card_w - inner * 3 - pw;
@@ -6289,22 +6257,22 @@ void Renderer::draw_settings_panel() {
                  y + row_h / 2, 150, 154, 162, 0);
         }
 #endif
-        text("Applies the next time a phone connects.", note_h, card_x + inner,
+        text(tr("Applies the next time a phone connects."), note_h, card_x + inner,
              cy + rows * row_h + gap + note_h / 2, 132, 132, 142, 0);
     } else if (tab == 2) {
-        settings_toggle_save_btn_   = toggle("Save to Pictures", settings_.screenshot_save_to_folder);
-        settings_toggle_clip_btn_   = toggle("Copy to clipboard", settings_.screenshot_copy_to_clipboard);
-        settings_toggle_snagit_btn_ = toggle("Open in Snagit", settings_.screenshot_open_in_snagit);
+        settings_toggle_save_btn_   = toggle(tr("Save to Pictures"), settings_.screenshot_save_to_folder);
+        settings_toggle_clip_btn_   = toggle(tr("Copy to clipboard"), settings_.screenshot_copy_to_clipboard);
+        settings_toggle_snagit_btn_ = toggle(tr("Open in Snagit"), settings_.screenshot_open_in_snagit);
         static const char* const fmt_opts[2] = {"MP4", "GIF"};
         BtnRect fmt[2];
-        segment("Recording format", fmt_opts, 2, settings_.record_format, fmt);
+        segment(tr("Recording format"), fmt_opts, 2, settings_.record_format, fmt);
         settings_fmt_mp4_btn_ = fmt[0];
         settings_fmt_gif_btn_ = fmt[1];
-        settings_toggle_resize_btn_ = toggle("Resize screenshots", resize_on);
+        settings_toggle_resize_btn_ = toggle(tr("Resize screenshots"), resize_on);
         if (resize_on) {
             // Height stepper: "-" / "X.X cm" / "+".
             int y = begin_row(false);
-            text("Height", label_h, card_x + inner, y + row_h / 2, 228, 228, 233, 0);
+            text(tr("Height"), label_h, card_x + inner, y + row_h / 2, 228, 228, 233, 0);
             int bs = label_h + 8, val_w = label_h * 5;
             int plus_x = card_x + card_w - inner - bs, by = y + (row_h - bs) / 2;
             int minus_x = plus_x - val_w - bs;
@@ -6322,25 +6290,25 @@ void Renderer::draw_settings_panel() {
             if (std::abs(cmv - std::round(cmv)) < 0.01f) snprintf(cmbuf, sizeof(cmbuf), "%d cm", (int)std::lround(cmv));
             else snprintf(cmbuf, sizeof(cmbuf), "%.1f cm", cmv);
             text(cmbuf, label_h, minus_x + bs + val_w / 2, y + row_h / 2, 236, 236, 241, 1);
-            settings_toggle_save_original_btn_ = toggle("Keep the original too", settings_.screenshot_save_original_too);
+            settings_toggle_save_original_btn_ = toggle(tr("Keep the original too"), settings_.screenshot_save_original_too);
         }
-        settings_toggle_webcam_mirror_btn_ = toggle("Mirror the webcam", settings_.webcam_mirror_h);
-        settings_toggle_webcam_record_btn_ = toggle("Webcam in recordings", settings_.webcam_include_in_recording);
+        settings_toggle_webcam_mirror_btn_ = toggle(tr("Mirror the webcam"), settings_.webcam_mirror_h);
+        settings_toggle_webcam_record_btn_ = toggle(tr("Webcam in recordings"), settings_.webcam_include_in_recording);
     } else {
         // Help: the cable guide, what the app can do, version and about.
         {
             int y = begin_row(true);
-            row_label("Connect a phone with a cable", y, label_h * 2);
+            row_label(tr("Connect a phone with a cable"), y, label_h * 2);
             draw_glyph(sdl_renderer_, lucide::ChevronRight, card_x + card_w - inner - label_h / 2,
                        y + row_h / 2, label_h, 150, 154, 162, text_alpha);
             settings_help_guide_btn_ = {card_x, y, card_w, row_h};
         }
-        static const char* const kTipsHelp[5] = {
-            "Drop files on the phone: APKs install, others go to Download",
-            "Copy on one side, paste on the other",
-            "Phone sound plays here too; U mutes the PC",
-            "Ctrl+S screenshot, Ctrl+R record, F fullscreen",
-            "Claude Code control: Phone > Claude control (MCP)"};
+        const char* const kTipsHelp[5] = {
+            tr("Drop files on the phone: APKs install, others go to Download"),
+            tr("Copy on one side, paste on the other"),
+            tr("Phone sound plays here too; U mutes the PC"),
+            tr("Ctrl+S screenshot, Ctrl+R record, F fullscreen"),
+            tr("Claude Code control: Phone > Claude control (MCP)")};
         for (const char* t : kTipsHelp) {
             int y = begin_row(false);
             text(t, fit_text_px(sdl_renderer_, t, label_h, card_w - inner * 2), card_x + inner,
@@ -6351,9 +6319,9 @@ void Renderer::draw_settings_panel() {
             int ph = label_h + 10, pw = (card_w - inner * 3) / 2;
             BtnRect ver{card_x + inner, y + (row_h - ph) / 2, pw, ph};
             BtnRect about{ver.x + pw + inner, ver.y, pw, ph};
-            ui_pill_(ver, "Version history", lucide::History, false,
+            ui_pill_(ver, tr("Version history"), lucide::History, false,
                      in_rect(mx, my, ver.x, ver.y, ver.w, ver.h), text_alpha);
-            ui_pill_(about, "About", lucide::Info, false,
+            ui_pill_(about, tr("About"), lucide::Info, false,
                      in_rect(mx, my, about.x, about.y, about.w, about.h), text_alpha);
             settings_help_ver_btn_ = ver;
             settings_help_about_btn_ = about;
@@ -7444,9 +7412,9 @@ void Renderer::draw_side_buttons_(std::string& hover_key, std::string& hover_tex
     uint8_t br, bg, bb;
     phone_frame_.button_color(&br, &bg, &bb);
     const bool android = android_input_active_();
-    static const char* const android_tips[4] = {"Mute PC sound (U)", "Volume up", "Volume down", "Power"};
-    static const char* const other_tips[4] = {
-        "Mute PC sound (U)", "Volume: use the phone", "Volume: use the phone", "Power: use the phone"};
+    const char* const android_tips[4] = {tr("Mute phone"), tr("Volume up"), tr("Volume down"), tr("Power")};
+    const char* const other_tips[4] = {
+        tr("Mute: use the phone"), tr("Volume: use the phone"), tr("Volume: use the phone"), tr("Power: use the phone")};
     const bool drawer_open = log_panel_visible_ && log_panel_anim_ > 0.5f;
     const bool active[kSideBtnCount] = {
         false, false, false, false,
@@ -7516,13 +7484,6 @@ void Renderer::draw_side_buttons_(std::string& hover_key, std::string& hover_tex
 
 void Renderer::press_side_button_(int index) {
     if (index < 0 || index > 3) return;
-    // The mute button mutes the PC (like U) for every phone; the phone's
-    // own speaker has "Mute phone speaker" in Settings.
-    if (index == 0) {
-        audio_muted_ = !audio_muted_;
-        if (audio_mute_fn_) audio_mute_fn_(audio_muted_);
-        return;
-    }
     if (android_input_active_()) {
         // KEYCODE_VOLUME_MUTE, VOLUME_UP, VOLUME_DOWN, POWER
         static const int codes[4] = {164, 24, 25, 26};
@@ -7531,11 +7492,6 @@ void Renderer::press_side_button_(int index) {
         in.keycode = codes[index];
         in.action = 0; android_input_fn_(in);
         in.action = 1; android_input_fn_(in);
-        return;
-    }
-    if (index == 0) {
-        audio_muted_ = !audio_muted_;
-        if (audio_mute_fn_) audio_mute_fn_(audio_muted_);
         return;
     }
     // AirPlay is one-way: nothing to send to an iPhone.
@@ -7907,8 +7863,8 @@ void Renderer::draw_android_panel() {
         android_close_btn_ = {panel_x + panel_w - pad - round_b, mid - round_b / 2, round_b, round_b};
         android_help_btn_  = {android_close_btn_.x - round_b - 6, mid - round_b / 2, round_b, round_b};
         int title_x = left + tile + tile / 3;
-        draw_text_mid(sdl_renderer_, "Add Android phone",
-                      fit_text_px(sdl_renderer_, "Add Android phone", title_h,
+        draw_text_mid(sdl_renderer_, tr("Add Android phone"),
+                      fit_text_px(sdl_renderer_, tr("Add Android phone"), title_h,
                                   android_help_btn_.x - 6 - title_x, 700),
                       244, 246, 248, text_alpha, title_x, mid, 0, 700);
         ui_round_btn_(android_help_btn_, lucide::CircleHelp, hov(android_help_btn_));
@@ -7927,7 +7883,7 @@ void Renderer::draw_android_panel() {
         fill_round_rect(sdl_renderer_, left, cy, inner_w, near_h, card_r);
 
         int hy = cy + 6 + near_head_h / 2;
-        draw_text_mid(sdl_renderer_, "NEARBY", label_h * 85 / 100, 127, 138, 156, text_alpha,
+        draw_text_mid(sdl_renderer_, tr("NEARBY"), label_h * 85 / 100, 127, 138, 156, text_alpha,
                       left + 14, hy, 0, 700);
         if (android_discover_running_.load()) {
             // "Scanning" + three accent dots blinking in turn.
@@ -7942,12 +7898,12 @@ void Renderer::draw_android_panel() {
                 SDL_SetRenderDrawColor(sdl_renderer_, ac.lr, ac.lg, ac.lb, a);
                 fill_circle(sdl_renderer_, dx + i * step, hy, dot_r);
             }
-            draw_text_mid(sdl_renderer_, "Scanning", label_h * 9 / 10, 127, 138, 156, text_alpha,
+            draw_text_mid(sdl_renderer_, tr("Scanning"), label_h * 9 / 10, 127, 138, 156, text_alpha,
                           dx - step, hy, 2);
         }
         int ry = cy + 6 + near_head_h;
         if (discovered_snapshot.empty()) {
-            draw_text_mid(sdl_renderer_, "No phones yet. Turn on Wireless debugging.",
+            draw_text_mid(sdl_renderer_, tr("No phones yet. Turn on Wireless debugging."),
                           label_h * 9 / 10, 127, 138, 156, text_alpha, left + 14,
                           ry + near_body_h / 2, 0);
         }
@@ -8003,11 +7959,11 @@ void Renderer::draw_android_panel() {
             android_field_rects_[idx] = fr;
             ui_field_(fr, val, placeholder, android_focus_ == idx, text_alpha);
         };
-        field(0, "IP address",   true,  android_ip_,           "192.168.1.20", left,             cy);
-        field(1, "Connect port", false, android_connect_port_, "46029",        left + col_w + gap, cy);
+        field(0, tr("IP address"),   true,  android_ip_,           "192.168.1.20", left,             cy);
+        field(1, tr("Connect port"), false, android_connect_port_, "46029",        left + col_w + gap, cy);
         cy += field_block + gap;
-        field(2, "Pair port",    true,  android_port_,         "42379",        left,             cy);
-        field(3, "Pairing code", true,  android_pin_,          "123456",       left + col_w + gap, cy);
+        field(2, tr("Pair port"),    true,  android_port_,         "42379",        left,             cy);
+        field(3, tr("Pairing code"), true,  android_pin_,          "123456",       left + col_w + gap, cy);
         cy += field_block + gap;
     }
 
@@ -8029,18 +7985,18 @@ void Renderer::draw_android_panel() {
         int bw = (inner_w - gap) / 2;
         android_qr_btn_  = {left, cy, bw, btn_h};
         android_usb_btn_ = {left + bw + gap, cy, bw, btn_h};
-        ui_pill_(android_qr_btn_, "QR code", lucide::QrCode, false, hov(android_qr_btn_), text_alpha);
-        ui_pill_(android_usb_btn_, "USB cable", lucide::Usb, false, hov(android_usb_btn_), text_alpha);
+        ui_pill_(android_qr_btn_, tr("QR code"), lucide::QrCode, false, hov(android_qr_btn_), text_alpha);
+        ui_pill_(android_usb_btn_, tr("USB cable"), lucide::Usb, false, hov(android_usb_btn_), text_alpha);
         cy += btn_h + gap;
         android_connect_btn_ = {left, cy, inner_w, btn_h + 4};
-        ui_pill_(android_connect_btn_, android_busy_ ? "Connecting..." : "Connect", 0, true,
+        ui_pill_(android_connect_btn_, android_busy_ ? tr("Connecting...") : tr("Connect"), 0, true,
                  hov(android_connect_btn_), text_alpha);
         cy += btn_h + 4;
         int dw = 0, dh = 0;
-        measure_text_c(sdl_renderer_, "Disconnect", label_h, &dw, &dh, 600);
+        measure_text_c(sdl_renderer_, tr("Disconnect"), label_h, &dw, &dh, 600);
         android_disconnect_btn_ = {panel_x + (panel_w - dw) / 2 - 10, cy, dw + 20, disc_h};
         bool dh_ = hov(android_disconnect_btn_);
-        draw_text_mid(sdl_renderer_, "Disconnect", label_h, dh_ ? 255 : 138, dh_ ? 138 : 148,
+        draw_text_mid(sdl_renderer_, tr("Disconnect"), label_h, dh_ ? 255 : 138, dh_ ? 138 : 148,
                       dh_ ? 143 : 166, text_alpha, panel_x + panel_w / 2, cy + disc_h / 2, 1, 600);
     }
 }

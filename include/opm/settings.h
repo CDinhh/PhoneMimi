@@ -61,6 +61,8 @@ struct Settings {
     bool android_mute_phone = false;
     // The one-time "drop files here" tip was shown.
     bool tip_drop_shown = false;
+    // UI language: 0 English, 1 Vietnamese.
+    int language = 0;
     int mcp_port = 47290;
     std::string mcp_token;
 

@@ -172,7 +172,6 @@ public:
 
 private:
     void render_frame();
-    void draw_island();
     void draw_footer(int svx, int svy, int svw, int svh);
     void draw_info_panel();
     // Returns a "phone-equivalent" reference width for sizing overlay UI
@@ -263,7 +262,7 @@ private:
 
     // Island visibility & animation
     bool island_visible_ = false;   // the old button row; replaced by Settings
-    float island_anim_ = 1.0f; // 0=hidden, 1=fully visible
+    float island_anim_ = 0.0f; // the old button banner is gone; always hidden
     std::chrono::steady_clock::time_point island_anim_start_;
     bool island_animating_ = false;
 
@@ -876,6 +875,11 @@ private:
     BtnRect setup_guide_rect_, setup_guide_close_btn_, setup_guide_tab_btns_[4];
     void draw_setup_guide_();
     BtnRect settings_toggle_mutephone_btn_;
+    BtnRect settings_seg_lang_btns_[2];
+    // First-connect tips card (mouse/keyboard, clipboard, drop files).
+    bool tips_visible_ = false;
+    BtnRect tips_close_btn_, tips_ok_btn_, tips_rect_;
+    void draw_tips_();
     // Settings: quick actions (screenshot, record, folder, log, stats,
     // webcam, quit), the phone row, and the Help tab.
     BtnRect settings_action_btns_[7];
