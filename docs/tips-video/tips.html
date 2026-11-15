@@ -25,7 +25,8 @@ html, body { margin: 0; width: 720px; height: 800px; overflow: hidden; backgroun
 .chip { border-radius: 14px; background: #2563eb; color: #fff; font-size: 15px; padding: 9px 14px;
   white-space: nowrap; box-shadow: 0 12px 24px rgba(37,99,235,.45); }
 .file { width: 92px; height: 104px; border-radius: 16px; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 8px; color: #dfe5f0; font-size: 14px; }
+  align-items: center; justify-content: center; gap: 8px; color: #dfe5f0; font-size: 14px;
+  text-shadow: 0 1px 3px rgba(0,0,0,.7); }
 .file .ic { width: 54px; height: 54px; border-radius: 14px; font-size: 30px; }
 #cursor { width: 30px; height: 36px; z-index: 50; filter: drop-shadow(0 3px 4px rgba(0,0,0,.5)); }
 .ripple { border-radius: 50%; border: 3px solid #4f8ef7; z-index: 40; }
@@ -136,61 +137,82 @@ if (CLIP === 1) {
 }
 
 if (CLIP === 2) {
-  // Copy on one side, paste on the other.
-  DUR = 5.8;
+  // Copy on the PC -> paste on the phone; copy on the phone -> paste on the PC.
+  DUR = 6.4;
   const W = el('abs win', { left: '34px', top: '70px', width: '360px', height: '230px' });
   ['#ff5f57', '#febc2e', '#28c840'].forEach((c, i) =>
     el('abs', { left: 16 + i * 18 + 'px', top: '16px', width: '10px', height: '10px', borderRadius: '50%', background: c }, '', W));
-  const lines = [];
-  [[60, 250], [88, 300], [116, 210], [144, 270]].forEach(([y, w]) =>
-    lines.push(el('abs bar', { left: '22px', top: y + 'px', width: w + 'px', background: '#2a3241' }, '', W)));
-  const pcLine = el('abs', { left: '22px', top: '170px', fontSize: '17px', color: '#e7ecf5' }, 'Meeting at 9:00', W);
-  const hl = el('abs', { left: '16px', top: '165px', height: '32px', width: '0px', borderRadius: '8px',
+  [[60, 250], [88, 300], [116, 210]].forEach(([y, w]) =>
+    el('abs bar', { left: '22px', top: y + 'px', width: w + 'px', background: '#2a3241' }, '', W));
+  el('abs', { left: '22px', top: '146px', fontSize: '17px', color: '#e7ecf5' }, 'Meeting at 9:00', W);
+  const hl = el('abs', { left: '16px', top: '141px', height: '32px', width: '0px', borderRadius: '8px',
     background: 'rgba(79,142,247,.35)' }, '', W);
-  const newLine = el('abs', { left: '22px', top: '200px', fontSize: '17px', color: '#9fc0ff', opacity: 0 }, 'On my way', W);
+  const pcNew = el('abs', { left: '22px', top: '186px', fontSize: '17px', color: '#9fc0ff', opacity: 0 }, 'On my way', W);
+  const pcCaret = el('abs', { left: '22px', top: '187px', width: '2px', height: '20px', background: ACC_L, opacity: 0 }, '', W);
+
   const P = phone(420, 230);
   P.home.style.opacity = 0;
   const notes = el('abs', { inset: '0' }, '', P.scr);
-  el('abs bar', { left: '20px', top: '58px', width: '120px', height: '12px', background: '#1d2433' }, '', notes);
   const pf = el('row', { top: '86px', height: '44px', display: 'flex', alignItems: 'center', paddingLeft: '14px',
     fontSize: '15px', color: '#1d2433' }, '', notes);
   const pfTxt = el('', {}, '', pf);
-  const pr2 = el('row', { top: '142px', height: '44px', display: 'flex', alignItems: 'center', paddingLeft: '14px',
+  const pfCaret = el('', { display: 'inline-block', width: '2px', height: '18px', background: ACC, marginLeft: '2px' }, '', pf);
+  el('row', { top: '142px', height: '44px', display: 'flex', alignItems: 'center', paddingLeft: '14px',
     fontSize: '15px', color: '#1d2433' }, 'On my way', notes);
   const phl = el('abs', { left: '24px', top: '150px', height: '28px', width: '0px', borderRadius: '7px',
     background: 'rgba(37,99,235,.28)' }, '', notes);
-  const k1 = el('abs key', { left: '74px', top: '340px', width: '70px' }, 'Ctrl');
-  const k2 = el('abs key', { left: '152px', top: '340px' }, 'C');
-  const pcopy = el('abs ic', { left: '132px', top: '147px', width: '34px', height: '34px', borderRadius: '10px',
-    background: '#1d2433', color: '#fff', fontSize: '18px', opacity: 0 }, icon(0xE0A2), notes);
-  const chip = el('abs chip', { left: 0, top: 0, opacity: 0 }, 'Meeting at 9:00');
-  const chip2 = el('abs chip', { left: 0, top: 0, opacity: 0 }, 'On my way');
-  const flash = (k) => k > 0 && k < 1 ? 1 - k : 0;
+  // phone bubbles: Paste over the empty field, Copy over the selection
+  const bubble = (y, cp) => el('abs ic', { left: '40px', top: y + 'px', width: '40px', height: '34px', borderRadius: '10px',
+    background: '#1d2433', color: '#fff', fontSize: '18px', opacity: 0,
+    boxShadow: '0 6px 14px rgba(15,20,30,.3)' }, icon(cp), notes);
+  const pasteB = bubble(46, 0xE3EB), copyB = bubble(102, 0xE0A2);
+  const rp = ripple(notes);
+
+  const kC = [el('abs key', { left: '74px', top: '330px', width: '70px' }, 'Ctrl'),
+              el('abs key', { left: '152px', top: '330px' }, 'C')];
+  const kV = [el('abs key', { left: '74px', top: '330px', width: '70px', opacity: 0 }, 'Ctrl'),
+              el('abs key', { left: '152px', top: '330px', opacity: 0 }, 'V')];
+  const clip = (txt) => el('abs chip', { left: 0, top: 0, opacity: 0, display: 'flex', alignItems: 'center', gap: '8px', zIndex: 30 },
+    `<span class="ic" style="font-size:16px">${icon(0xE089)}</span><span>${txt}</span>`);
+  const chipA = clip('Meeting at 9:00'), chipB = clip('On my way');
   function keyOn(k, on) {
     k.style.background = on ? ACC : '#1f2430';
     k.style.transform = `translateY(${on ? 3 : 0}px)`;
     k.style.boxShadow = on ? '0 1px 0 #11151d' : '0 4px 0 #11151d, inset 0 0 0 1px #2d3442';
   }
+  const pop = (b, a, z) => { b.style.opacity = t_ > a && t_ < z ? 1 : 0; b.style.transform = `scale(${back(seg(t_, a, a + .25))})`; };
+  let t_ = 0;
   render = t => {
+    t_ = t;
     S.style.opacity = Math.min(seg(t, 0, .25), 1 - seg(t, DUR - .35, DUR));
-    hl.style.width = 160 * eout(seg(t, .3, .8)) + 'px';
-    keyOn(k1, t > .95 && t < 1.35); keyOn(k2, t > 1.05 && t < 1.3);
-    // PC -> phone along an arc
-    const f = eio(seg(t, 1.35, 2.25));
-    const ax = 44, ay = 232, bx = 450, by = 318;
-    const x = lerp(ax, bx, f), y = lerp(ay, by, f) - Math.sin(f * Math.PI) * 120;
-    set(chip, x, y, lerp(1, .85, f), t > 1.35 && t < 2.3 ? 1 : 0, lerp(-4, 3, f));
-    pfTxt.textContent = t >= 2.25 ? 'Meeting at 9:00' : '';
-    pf.style.boxShadow = `0 0 0 ${3 * flash(seg(t, 2.25, 2.9))}px rgba(37,99,235,.6), 0 1px 2px rgba(15,20,30,.08)`;
-    // phone -> PC
-    phl.style.width = 95 * eout(seg(t, 2.9, 3.3)) + 'px';
-    pcopy.style.opacity = t > 3.25 && t < 3.75 ? 1 : 0;
-    pcopy.style.transform = `scale(${back(seg(t, 3.25, 3.5))})`;
-    const g = eio(seg(t, 3.6, 4.5));
-    const x2 = lerp(456, 44, g), y2 = lerp(372, 262, g) - Math.sin(g * Math.PI) * 110;
-    set(chip2, x2, y2, lerp(.85, 1, g), t > 3.6 && t < 4.55 ? 1 : 0, lerp(3, -3, g));
-    newLine.style.opacity = t >= 4.5 ? 1 : 0;
-    newLine.style.transform = `translateY(${lerp(6, 0, eout(seg(t, 4.5, 4.8)))}px)`;
+    // 1. PC: select + Ctrl+C
+    hl.style.width = 160 * eout(seg(t, .3, .75));
+    hl.style.width = 160 * eout(seg(t, .3, .75)) + 'px';
+    const copyKeys = t < 3.6;
+    kC.forEach(k => k.style.opacity = copyKeys ? 1 : 0);
+    kV.forEach(k => k.style.opacity = copyKeys ? 0 : 1);
+    keyOn(kC[0], t > .85 && t < 1.25); keyOn(kC[1], t > .95 && t < 1.2);
+    // 2. clipboard flies to the phone
+    const f = eio(seg(t, 1.3, 2.1));
+    set(chipA, lerp(40, 450, f), lerp(208, 330, f) - Math.sin(f * Math.PI) * 120, lerp(1, .8, f),
+        t > 1.3 && t < 2.15 ? 1 : 0, lerp(-4, 3, f));
+    // 3. phone: Paste bubble, tap, text appears
+    pop(pasteB, 2.2, 3.0);
+    doRipple(rp, 60, 63, seg(t, 2.65, 3.1));
+    pfTxt.textContent = t >= 2.75 ? 'Meeting at 9:00' : '';
+    pfCaret.style.opacity = t < 2.75 && Math.floor(t * 2.5) % 2 === 0 ? 1 : 0;
+    // 4. phone: select + Copy bubble, tap
+    phl.style.width = 95 * eout(seg(t, 3.2, 3.5)) + 'px';
+    pop(copyB, 3.45, 4.0);
+    if (t > 3.8) doRipple(rp, 60, 119, seg(t, 3.8, 4.25));
+    // 5. clipboard flies back, Ctrl+V on the PC
+    const g = eio(seg(t, 4.0, 4.8));
+    set(chipB, lerp(456, 40, g), lerp(380, 238, g) - Math.sin(g * Math.PI) * 110, lerp(.8, 1, g),
+        t > 4.0 && t < 4.85 ? 1 : 0, lerp(3, -3, g));
+    keyOn(kV[0], t > 4.9 && t < 5.3); keyOn(kV[1], t > 5.0 && t < 5.25);
+    pcCaret.style.opacity = t > 4.0 && t < 5.1 && Math.floor(t * 2.5) % 2 === 0 ? 1 : 0;
+    pcNew.style.opacity = t >= 5.1 ? 1 : 0;
+    pcNew.style.transform = `translateY(${lerp(6, 0, eout(seg(t, 5.1, 5.4)))}px)`;
   };
 }
 
@@ -199,8 +221,8 @@ if (CLIP === 3) {
   DUR = 7.0;
   const desk = el('abs', { left: '40px', top: '120px', width: '230px', height: '520px', borderRadius: '22px',
     background: 'rgba(255,255,255,.03)', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.06)' });
-  const f1 = el('abs file', { left: '84px', top: '200px' }, `<div class="ic" style="background:#ffb547;color:#3a2600">${icon(0xE0F9)}</div>photo.jpg`);
-  const f2 = el('abs file', { left: '84px', top: '420px' }, `<div class="ic" style="background:#4fd18b;color:#0b3320">${icon(0xE12C)}</div>app.apk`);
+  const f1 = el('abs file', { left: '84px', top: '200px', zIndex: 30 }, `<div class="ic" style="background:#ffb547;color:#3a2600">${icon(0xE0F9)}</div>photo.jpg`);
+  const f2 = el('abs file', { left: '84px', top: '420px', zIndex: 30 }, `<div class="ic" style="background:#4fd18b;color:#0b3320">${icon(0xE12C)}</div>app.apk`);
   const P = phone(400, 130);
   // Download row inside the phone
   const dl = el('row', { top: '210px', height: '58px', opacity: 0 }, '', P.scr);
