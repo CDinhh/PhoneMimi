@@ -299,10 +299,12 @@ bool AdbController::kill_server() {
     return run_({"kill-server"}, {}, nullptr) == 0;
 }
 
-std::vector<DeviceInfo> AdbController::list_devices() {
+std::vector<DeviceInfo> AdbController::list_devices(int timeout_ms) {
     std::vector<DeviceInfo> result;
     std::string out;
-    if (run_({"devices", "-l"}, {}, &out) != 0) return result;
+    int rc = timeout_ms > 0 ? spawn_capture(adb_path_, {"devices", "-l"}, {}, &out, timeout_ms, &cancel_)
+                            : run_({"devices", "-l"}, {}, &out);
+    if (rc != 0) return result;
 
     std::istringstream iss(out);
     std::string line;

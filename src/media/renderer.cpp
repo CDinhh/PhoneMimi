@@ -1329,6 +1329,20 @@ void Renderer::submit_frame(VideoFrame frame) {
     has_new_frame_ = true;
 }
 
+bool Renderer::copy_shown_frame(std::vector<uint8_t>* rgba, int* w, int* h) {
+    std::lock_guard lock(frame_mutex_);
+    if (last_frame_data_.empty() || last_frame_w_ <= 0 || last_frame_h_ <= 0 ||
+        last_frame_stride_ < last_frame_w_ * 4)
+        return false;
+    rgba->resize(size_t(last_frame_w_) * last_frame_h_ * 4);
+    for (int y = 0; y < last_frame_h_; ++y)
+        memcpy(rgba->data() + size_t(y) * last_frame_w_ * 4,
+               last_frame_data_.data() + size_t(y) * last_frame_stride_, size_t(last_frame_w_) * 4);
+    *w = last_frame_w_;
+    *h = last_frame_h_;
+    return true;
+}
+
 void Renderer::load_icon_texture() {
 #ifdef _WIN32
     HICON hIcon = (HICON)LoadImageA(GetModuleHandle(nullptr),
@@ -2834,8 +2848,11 @@ void Renderer::run() {
             if (texture_) { SDL_DestroyTexture(texture_); texture_ = nullptr; }
             tex_width_ = tex_height_ = 0;
             ever_received_frame_ = false;
-            last_frame_data_.clear();
-            last_frame_w_ = last_frame_h_ = last_frame_stride_ = 0;
+            {
+                std::lock_guard lk(frame_mutex_);   // copy_shown_frame reads these
+                last_frame_data_.clear();
+                last_frame_w_ = last_frame_h_ = last_frame_stride_ = 0;
+            }
             pending_source_name_.clear();
             // Drop any in-flight frame that the source's worker thread
             // may have submitted just before its disconnect callback

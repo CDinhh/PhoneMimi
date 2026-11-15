@@ -66,7 +66,7 @@ std::vector<mcp::DeviceRow> App::devices() {
         auto now = std::chrono::steady_clock::now();
         if (now - adb_rows_at_ > std::chrono::seconds(3)) {
             adb_rows_.clear();
-            for (auto& d : adb_.list_devices()) {
+            for (auto& d : adb_.list_devices(5000)) {
                 if (d.state != "device") continue;
                 mcp::DeviceRow r;
                 r.id = d.serial;
@@ -103,7 +103,25 @@ std::vector<mcp::DeviceRow> App::devices() {
 }
 
 bool App::frame(const std::string& id, mcp::Frame* out, int wait_ms) {
-    return frame_tap_.get(id, out, wait_ms);
+    bool ok = frame_tap_.get(id, out, wait_ms);
+    // The tap copies at most every 250 ms, so after an animation it can hold
+    // a frame from mid-way. The phone on screen has an exact copy in the
+    // renderer: prefer it (it also covers an iPhone whose screen stopped).
+    bool shown = false;
+#ifdef ENABLE_ANDROID
+    if (active_source_.load() == static_cast<int>(Source::Android)) {
+        std::lock_guard lk(scrcpy_mutex_);
+        shown = active_android_serial_ == id;
+    }
+#endif
+#ifdef ENABLE_AIRPLAY
+    if (id == "iphone" && active_source_.load() == static_cast<int>(Source::AirPlay)) shown = true;
+#endif
+    if (ok && shown) {
+        mcp::Frame f;
+        if (renderer_.copy_shown_frame(&f.rgba, &f.w, &f.h)) *out = std::move(f);
+    }
+    return ok;
 }
 
 bool App::send(const std::string& id, const mcp::Input& in) {

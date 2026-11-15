@@ -62,7 +62,7 @@ public:
     bool disconnect(const std::string& ip_port = {});
 
     // `adb devices -l`, parsed.
-    std::vector<DeviceInfo> list_devices();
+    std::vector<DeviceInfo> list_devices(int timeout_ms = 0);   // 0 = no deadline
 
     // `adb mdns services` — returns one entry per discovered service.
     // adb ships its own mDNS implementation that often works even when

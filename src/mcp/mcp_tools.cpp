@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <iostream>
+#include <atomic>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -165,10 +166,13 @@ struct Ctx {
         adb(d, {"exec-out", "uiautomator", "dump", "/dev/tty"}, &xml, step);
         bool ok = parse_ui_dump(xml, nodes, err);
         if (!ok && !host.closing()) {
+            static std::atomic<unsigned> seq{0};
+            std::string file = "/data/local/tmp/pm_ui_" + std::to_string(++seq) + ".xml";
             std::string tmp;
-            adb(d, {"shell", "uiautomator", "dump", "/sdcard/pm_ui.xml"}, &tmp, step);
+            adb(d, {"shell", "uiautomator", "dump", file}, &tmp, step);
             xml.clear();
-            adb(d, {"exec-out", "cat", "/sdcard/pm_ui.xml"}, &xml, std::min(step, 10000));
+            adb(d, {"exec-out", "cat", file}, &xml, std::min(step, 10000));
+            adb(d, {"shell", "rm", "-f", file}, &tmp, 5000);
             ok = parse_ui_dump(xml, nodes, err);
         }
         if (!ok) {

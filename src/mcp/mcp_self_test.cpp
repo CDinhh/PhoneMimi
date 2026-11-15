@@ -215,6 +215,7 @@ struct FakeHost : Host {
     std::vector<DeviceRow> rows;
     std::vector<Input> sent;
     std::map<std::string, std::pair<int, std::string>> adb_replies;
+    std::vector<std::string> calls;
     bool send_ok = true;
     bool is_closing = false;
     Frame fr;
@@ -234,6 +235,7 @@ struct FakeHost : Host {
     int adb(const std::string&, const std::vector<std::string>& args, std::string* out, int) override {
         std::string k;
         for (auto& a : args) k += (k.empty() ? "" : " ") + a;
+        calls.push_back(k);
         auto it = adb_replies.find(k);
         if (it == adb_replies.end()) { if (out) out->clear(); return 0; }
         if (out) *out = it->second.second;
@@ -317,9 +319,21 @@ void test_tools() {
     h.send_ok = true;
 
     h.adb_replies["exec-out uiautomator dump /dev/tty"] = {0, "ERROR: could not get idle state.\n"};
-    h.adb_replies["exec-out cat /sdcard/pm_ui.xml"] = {1, "No such file"};
+    for (int i = 1; i <= 8; ++i)
+        h.adb_replies["exec-out cat /data/local/tmp/pm_ui_" + std::to_string(i) + ".xml"] = {1, "No such file"};
     r = tool(t, "ui_tree", {});
     CHECK(is_err(r) && text_of(r).find("ocr_screen") != std::string::npos);
+    // Each fallback dump uses its own temp file and removes it (review minor).
+    h.calls.clear();
+    tool(t, "ui_tree", {});
+    tool(t, "ui_tree", {});
+    std::vector<std::string> files;
+    int removed = 0;
+    for (auto& c : h.calls) {
+        if (c.rfind("shell uiautomator dump /data/local/tmp/pm_ui_", 0) == 0) files.push_back(c.substr(23));
+        if (c.rfind("shell rm -f /data/local/tmp/pm_ui_", 0) == 0) ++removed;
+    }
+    CHECK(files.size() == 2 && files[0] != files[1] && removed == 2);
     h.adb_replies["exec-out uiautomator dump /dev/tty"] = {0, kDump};
 
     h.adb_replies["shell sleep 999"] = {-2, "partial"};

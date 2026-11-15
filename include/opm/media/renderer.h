@@ -27,6 +27,8 @@ public:
     bool init(const std::string& title, int width, int height);
     void shutdown();
     void submit_frame(VideoFrame frame);
+    // Packed copy of the last frame drawn (thread-safe). False if none yet.
+    bool copy_shown_frame(std::vector<uint8_t>* rgba, int* w, int* h);
     void run();
     void stop();
     void request_reset() { reset_requested_.store(true); }
