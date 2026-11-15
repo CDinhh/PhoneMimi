@@ -5868,9 +5868,11 @@ void Renderer::draw_tips_() {
     const char* const titles[3] = {tr("Mouse and keyboard"), tr("Clipboard sync"), tr("Drag and drop files")};
     tips_index_ = (tips_index_ % 3 + 3) % 3;
 
-    int panel_x = svx + pad / 2, panel_w = svw - pad;
+    // Edge to edge over the lower half of the screen; the bezel drawn
+    // afterwards rounds the bottom corners like the screen itself.
+    int panel_x = svx, panel_w = svw;
     int panel_h = svh / 2;
-    int panel_y = svy + svh - panel_h - pad / 2;
+    int panel_y = svy + svh - panel_h;
     tips_rect_ = {panel_x, panel_y, panel_w, panel_h};
     int mx, my;
     SDL_GetMouseState(&mx, &my);
