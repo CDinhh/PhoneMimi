@@ -1,0 +1,263 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face { font-family: J; src: url("file:///D:/Github/1PhoneMirror/resources/fonts/PlusJakartaSans-SemiBold.ttf"); }
+@font-face { font-family: L; src: url("file:///D:/Github/1PhoneMirror/resources/fonts/lucide.ttf"); }
+html, body { margin: 0; width: 720px; height: 800px; overflow: hidden; background: #0d1016; }
+#stage { position: absolute; inset: 0; overflow: hidden; font-family: J, sans-serif;
+  background: radial-gradient(120% 80% at 20% 0%, #172238 0%, #0d1016 60%); }
+.abs { position: absolute; }
+.ic { font-family: L; line-height: 1; display: flex; align-items: center; justify-content: center; }
+.phone { width: 270px; height: 540px; border-radius: 46px; background: #1b1e25;
+  box-shadow: 0 30px 60px rgba(0,0,0,.55), inset 0 0 0 1.5px #2c313b; }
+.screen { position: absolute; left: 11px; top: 11px; right: 11px; bottom: 11px; border-radius: 36px;
+  background: #f2f4f8; overflow: hidden; }
+.notch { position: absolute; left: 50%; top: 9px; width: 70px; height: 20px; margin-left: -35px;
+  border-radius: 12px; background: #1b1e25; z-index: 5; }
+.app { width: 46px; height: 46px; border-radius: 14px; }
+.row { position: absolute; left: 16px; right: 16px; height: 44px; border-radius: 12px; background: #fff;
+  box-shadow: 0 1px 2px rgba(15,20,30,.08); }
+.bar { position: absolute; height: 8px; border-radius: 4px; background: #d9dee8; }
+.key { width: 46px; height: 46px; border-radius: 11px; background: #1f2430; color: #dfe5f0;
+  font-size: 19px; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 0 #11151d, inset 0 0 0 1px #2d3442; }
+.win { border-radius: 16px; background: #171c27; box-shadow: 0 24px 50px rgba(0,0,0,.5), inset 0 0 0 1px #262d3b; }
+.chip { border-radius: 14px; background: #2563eb; color: #fff; font-size: 15px; padding: 9px 14px;
+  white-space: nowrap; box-shadow: 0 12px 24px rgba(37,99,235,.45); }
+.file { width: 92px; height: 104px; border-radius: 16px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 8px; color: #dfe5f0; font-size: 14px; }
+.file .ic { width: 54px; height: 54px; border-radius: 14px; font-size: 30px; }
+#cursor { width: 30px; height: 36px; z-index: 50; filter: drop-shadow(0 3px 4px rgba(0,0,0,.5)); }
+.ripple { border-radius: 50%; border: 3px solid #4f8ef7; z-index: 40; }
+</style></head>
+<body><div id="stage"></div>
+<script>
+const CLIP = +(new URLSearchParams(location.search).get('clip') || 1);
+const ACC = '#2563eb', ACC_L = '#4f8ef7';
+const S = document.getElementById('stage');
+const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, k) => a + (b - a) * k;
+const seg = (t, a, b) => cl((t - a) / (b - a));
+const eio = k => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+const eout = k => 1 - Math.pow(1 - k, 3);
+const back = k => { const c = 1.70158; return 1 + (c + 1) * Math.pow(k - 1, 3) + c * Math.pow(k - 1, 2); };
+function el(cls, css = {}, html = '', parent = S) {
+  const e = document.createElement('div'); e.className = cls; Object.assign(e.style, css);
+  e.innerHTML = html; parent.appendChild(e); return e;
+}
+const icon = cp => String.fromCodePoint(cp);
+function set(e, x, y, s = 1, o = 1, r = 0) {
+  e.style.transform = `translate(${x}px,${y}px) scale(${s}) rotate(${r}deg)`; e.style.opacity = o;
+}
+const CURSOR = '<svg viewBox="0 0 30 36" width="30" height="36"><path d="M3 2 L3 29 L10 22.5 L15 33 L19.5 31 L14.6 20.8 L24 20.8 Z" fill="#fff" stroke="#0d1016" stroke-width="2" stroke-linejoin="round"/></svg>';
+
+// A phone at (x, y) with a home screen of app icons. Returns parts.
+function phone(x, y) {
+  const p = el('abs phone', { left: x + 'px', top: y + 'px' });
+  el('notch', {}, '', p);
+  const scr = el('screen', {}, '', p);
+  const home = el('abs', { inset: '0' }, '', scr);
+  const cols = ['#ff6b6b', '#ffb547', '#4fd18b', '#4f8ef7', '#a77bf3', '#ff7ab6', '#38c6d9', '#f4d03f'];
+  const apps = [];
+  for (let i = 0; i < 8; i++) {
+    const a = el('abs app', { left: 22 + (i % 4) * 54 + 'px', top: 56 + Math.floor(i / 4) * 64 + 'px',
+      background: `linear-gradient(145deg, ${cols[i]}, ${cols[i]}cc)` }, '', home);
+    apps.push(a);
+  }
+  return { p, scr, home, apps };
+}
+function ripple(parent) { return el('abs ripple', { width: '10px', height: '10px', opacity: 0 }, '', parent); }
+function doRipple(r, cx, cy, k) {
+  const d = lerp(10, 70, eout(k));
+  r.style.width = r.style.height = d + 'px';
+  r.style.left = cx - d / 2 + 'px'; r.style.top = cy - d / 2 + 'px';
+  r.style.opacity = k <= 0 || k >= 1 ? 0 : 1 - k;
+}
+
+let render, DUR;
+
+if (CLIP === 1) {
+  // Mouse = touch, wheel = scroll, PC keys type on the phone.
+  DUR = 5.4;
+  const P = phone(225, 34);
+  const list = el('abs', { inset: '0', opacity: 0, background: '#f2f4f8' }, '', P.scr);
+  const field = el('row', { top: '48px', height: '40px', display: 'flex', alignItems: 'center',
+    paddingLeft: '14px', fontSize: '16px', color: '#1d2433', boxShadow: 'inset 0 0 0 2px #dfe4ee' }, '', list);
+  const txt = el('', { display: 'inline' }, '', field);
+  const caret = el('', { display: 'inline-block', width: '2px', height: '20px', background: ACC, marginLeft: '2px' }, '', field);
+  const feedBox = el('abs', { left: 0, right: 0, top: '100px', bottom: 0, overflow: 'hidden' }, '', list);
+  const feed = el('abs', { left: 0, right: 0, top: '4px', height: '900px' }, '', feedBox);
+  for (let i = 0; i < 12; i++) {
+    const r = el('row', { top: i * 56 + 'px', height: '46px' }, '', feed);
+    el('abs', { left: '10px', top: '9px', width: '28px', height: '28px', borderRadius: '9px',
+      background: ['#4f8ef7', '#4fd18b', '#ffb547', '#a77bf3'][i % 4] }, '', r);
+    el('bar', { left: '48px', top: '12px', width: 90 + (i * 37) % 60 + 'px' }, '', r);
+    el('bar', { left: '48px', top: '26px', width: 50 + (i * 23) % 50 + 'px', background: '#e8ebf1' }, '', r);
+  }
+  const keys = ['H', 'E', 'L', 'L', 'O'].map((ch, i) =>
+    el('abs key', { left: 238 + i * 52 + 'px', top: '646px' }, ch));
+  const rp1 = ripple(S), rp2 = ripple(S);
+  const cur = el('abs', { left: 0, top: 0 }, CURSOR); cur.id = 'cursor';
+  const wheel = el('abs ic', { width: '26px', height: '26px', color: ACC_L, fontSize: '22px', opacity: 0 }, icon(0xE071));
+  const iconPos = { x: 225 + 11 + 22 + 54 + 23, y: 34 + 11 + 56 + 23 };   // 2nd app icon centre
+  render = t => {
+    const fin = seg(t, 0, .25), fout = 1 - seg(t, DUR - .35, DUR);
+    S.style.opacity = Math.min(fin, fout);
+    let cx = lerp(640, iconPos.x, eio(seg(t, .1, .8))), cy = lerp(760, iconPos.y, eio(seg(t, .1, .8)));
+    const fieldPos = { x: 225 + 11 + 120, y: 34 + 11 + 68 };
+    const scrollPos = { x: 225 + 135, y: 34 + 360 };
+    if (t > 1.3) { const k = eio(seg(t, 1.3, 1.7)); cx = lerp(iconPos.x, scrollPos.x, k); cy = lerp(iconPos.y, scrollPos.y, k); }
+    if (t > 2.6) { const k = eio(seg(t, 2.6, 3.0)); cx = lerp(scrollPos.x, fieldPos.x, k); cy = lerp(scrollPos.y, fieldPos.y, k); }
+    const press = (t > .85 && t < 1.0) || (t > 3.05 && t < 3.2);
+    set(cur, cx - 3, cy - 2, press ? .88 : 1);
+    doRipple(rp1, iconPos.x, iconPos.y, seg(t, .9, 1.4));
+    doRipple(rp2, fieldPos.x, fieldPos.y, seg(t, 3.1, 3.6));
+    P.apps[1].style.transform = `scale(${t > .85 && t < 1.05 ? .9 : 1})`;
+    // the app opens from its icon
+    const op = eout(seg(t, 1.0, 1.35));
+    list.style.opacity = op;
+    list.style.transform = `scale(${lerp(.3, 1, op)})`; list.style.transformOrigin = '100px 80px';
+    // wheel scrolls the list
+    const sc = eio(seg(t, 1.7, 2.5));
+    feed.style.transform = `translateY(${-190 * sc}px)`;
+    const wv = t > 1.65 && t < 2.55;
+    set(wheel, cx + 18, cy + 18 + Math.sin(t * 18) * 3, 1, wv ? 1 : 0);
+    // keys type into the field
+    const typed = Math.floor(cl((t - 3.4) / .26, 0, 5));
+    txt.textContent = 'HELLO'.slice(0, typed);
+    keys.forEach((k, i) => {
+      const a = 3.4 + i * .26, on = t >= a && t < a + .16;
+      k.style.background = on ? ACC : '#1f2430';
+      k.style.transform = `translateY(${on ? 3 : 0}px)`;
+      k.style.boxShadow = on ? '0 1px 0 #11151d' : '0 4px 0 #11151d, inset 0 0 0 1px #2d3442';
+    });
+    caret.style.opacity = t > 3.1 && Math.floor(t * 2.5) % 2 === 0 ? 1 : 0;
+  };
+}
+
+if (CLIP === 2) {
+  // Copy on one side, paste on the other.
+  DUR = 5.8;
+  const W = el('abs win', { left: '34px', top: '70px', width: '360px', height: '230px' });
+  ['#ff5f57', '#febc2e', '#28c840'].forEach((c, i) =>
+    el('abs', { left: 16 + i * 18 + 'px', top: '16px', width: '10px', height: '10px', borderRadius: '50%', background: c }, '', W));
+  const lines = [];
+  [[60, 250], [88, 300], [116, 210], [144, 270]].forEach(([y, w]) =>
+    lines.push(el('abs bar', { left: '22px', top: y + 'px', width: w + 'px', background: '#2a3241' }, '', W)));
+  const pcLine = el('abs', { left: '22px', top: '170px', fontSize: '17px', color: '#e7ecf5' }, 'Meeting at 9:00', W);
+  const hl = el('abs', { left: '16px', top: '165px', height: '32px', width: '0px', borderRadius: '8px',
+    background: 'rgba(79,142,247,.35)' }, '', W);
+  const newLine = el('abs', { left: '22px', top: '200px', fontSize: '17px', color: '#9fc0ff', opacity: 0 }, 'On my way', W);
+  const P = phone(420, 230);
+  P.home.style.opacity = 0;
+  const notes = el('abs', { inset: '0' }, '', P.scr);
+  el('abs bar', { left: '20px', top: '58px', width: '120px', height: '12px', background: '#1d2433' }, '', notes);
+  const pf = el('row', { top: '86px', height: '44px', display: 'flex', alignItems: 'center', paddingLeft: '14px',
+    fontSize: '15px', color: '#1d2433' }, '', notes);
+  const pfTxt = el('', {}, '', pf);
+  const pr2 = el('row', { top: '142px', height: '44px', display: 'flex', alignItems: 'center', paddingLeft: '14px',
+    fontSize: '15px', color: '#1d2433' }, 'On my way', notes);
+  const phl = el('abs', { left: '24px', top: '150px', height: '28px', width: '0px', borderRadius: '7px',
+    background: 'rgba(37,99,235,.28)' }, '', notes);
+  const k1 = el('abs key', { left: '74px', top: '340px', width: '70px' }, 'Ctrl');
+  const k2 = el('abs key', { left: '152px', top: '340px' }, 'C');
+  const pcopy = el('abs ic', { left: '132px', top: '147px', width: '34px', height: '34px', borderRadius: '10px',
+    background: '#1d2433', color: '#fff', fontSize: '18px', opacity: 0 }, icon(0xE0A2), notes);
+  const chip = el('abs chip', { left: 0, top: 0, opacity: 0 }, 'Meeting at 9:00');
+  const chip2 = el('abs chip', { left: 0, top: 0, opacity: 0 }, 'On my way');
+  const flash = (k) => k > 0 && k < 1 ? 1 - k : 0;
+  function keyOn(k, on) {
+    k.style.background = on ? ACC : '#1f2430';
+    k.style.transform = `translateY(${on ? 3 : 0}px)`;
+    k.style.boxShadow = on ? '0 1px 0 #11151d' : '0 4px 0 #11151d, inset 0 0 0 1px #2d3442';
+  }
+  render = t => {
+    S.style.opacity = Math.min(seg(t, 0, .25), 1 - seg(t, DUR - .35, DUR));
+    hl.style.width = 160 * eout(seg(t, .3, .8)) + 'px';
+    keyOn(k1, t > .95 && t < 1.35); keyOn(k2, t > 1.05 && t < 1.3);
+    // PC -> phone along an arc
+    const f = eio(seg(t, 1.35, 2.25));
+    const ax = 44, ay = 232, bx = 450, by = 318;
+    const x = lerp(ax, bx, f), y = lerp(ay, by, f) - Math.sin(f * Math.PI) * 120;
+    set(chip, x, y, lerp(1, .85, f), t > 1.35 && t < 2.3 ? 1 : 0, lerp(-4, 3, f));
+    pfTxt.textContent = t >= 2.25 ? 'Meeting at 9:00' : '';
+    pf.style.boxShadow = `0 0 0 ${3 * flash(seg(t, 2.25, 2.9))}px rgba(37,99,235,.6), 0 1px 2px rgba(15,20,30,.08)`;
+    // phone -> PC
+    phl.style.width = 95 * eout(seg(t, 2.9, 3.3)) + 'px';
+    pcopy.style.opacity = t > 3.25 && t < 3.75 ? 1 : 0;
+    pcopy.style.transform = `scale(${back(seg(t, 3.25, 3.5))})`;
+    const g = eio(seg(t, 3.6, 4.5));
+    const x2 = lerp(456, 44, g), y2 = lerp(372, 262, g) - Math.sin(g * Math.PI) * 110;
+    set(chip2, x2, y2, lerp(.85, 1, g), t > 3.6 && t < 4.55 ? 1 : 0, lerp(3, -3, g));
+    newLine.style.opacity = t >= 4.5 ? 1 : 0;
+    newLine.style.transform = `translateY(${lerp(6, 0, eout(seg(t, 4.5, 4.8)))}px)`;
+  };
+}
+
+if (CLIP === 3) {
+  // Any file: dropped into Download. APK: installed.
+  DUR = 7.0;
+  const desk = el('abs', { left: '40px', top: '120px', width: '230px', height: '520px', borderRadius: '22px',
+    background: 'rgba(255,255,255,.03)', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.06)' });
+  const f1 = el('abs file', { left: '84px', top: '200px' }, `<div class="ic" style="background:#ffb547;color:#3a2600">${icon(0xE0F9)}</div>photo.jpg`);
+  const f2 = el('abs file', { left: '84px', top: '420px' }, `<div class="ic" style="background:#4fd18b;color:#0b3320">${icon(0xE12C)}</div>app.apk`);
+  const P = phone(400, 130);
+  // Download row inside the phone
+  const dl = el('row', { top: '210px', height: '58px', opacity: 0 }, '', P.scr);
+  el('abs ic', { left: '10px', top: '9px', width: '40px', height: '40px', borderRadius: '10px', background: '#fff1d6',
+    color: '#c27b00', fontSize: '22px' }, icon(0xE0F9), dl);
+  el('abs', { left: '60px', top: '10px', fontSize: '13px', color: '#1d2433' }, 'photo.jpg', dl);
+  el('abs ic', { left: '60px', top: '30px', fontSize: '13px', color: '#7a8396', gap: '4px' },
+    `${icon(0xE335)}<span style="font-family:J;margin-left:4px">Download</span>`, dl);
+  const dlOk = el('abs ic', { right: '12px', top: '17px', width: '24px', height: '24px', color: '#22c55e', fontSize: '22px' }, icon(0xE225), dl);
+  // install: ring + new app on the home screen
+  const ring = el('abs', { left: '70px', top: '250px', width: '108px', height: '108px', opacity: 0 }, '', P.scr);
+  ring.innerHTML = `<svg width="108" height="108" viewBox="0 0 108 108"><circle cx="54" cy="54" r="46" fill="none" stroke="#dde3ee" stroke-width="8"/>
+    <circle id="arc" cx="54" cy="54" r="46" fill="none" stroke="${ACC}" stroke-width="8" stroke-linecap="round"
+    transform="rotate(-90 54 54)" stroke-dasharray="289" stroke-dashoffset="289"/></svg>`;
+  const arc = ring.querySelector('#arc');
+  const pk = el('abs ic', { left: '100px', top: '280px', width: '48px', height: '48px', borderRadius: '14px',
+    background: '#4fd18b', color: '#0b3320', fontSize: '26px', opacity: 0 }, icon(0xE12C), P.scr);
+  const okBadge = el('abs ic', { left: '134px', top: '272px', width: '26px', height: '26px', borderRadius: '50%',
+    background: '#22c55e', color: '#fff', fontSize: '16px', opacity: 0 }, icon(0xE070), P.scr);
+  const cur = el('abs', {}, CURSOR); cur.id = 'cursor';
+  const fx1 = 84 + 46, fy1 = 200 + 40, fx2 = 84 + 46, fy2 = 420 + 40, px = 400 + 135, py = 130 + 270;
+  render = t => {
+    S.style.opacity = Math.min(seg(t, 0, .25), 1 - seg(t, DUR - .35, DUR));
+    let cx = lerp(660, fx1, eio(seg(t, .1, .7))), cy = lerp(760, fy1, eio(seg(t, .1, .7)));
+    // drag 1: photo -> phone
+    const d1 = eio(seg(t, .9, 1.8));
+    if (t > .9) { cx = lerp(fx1, px, d1); cy = lerp(fy1, py, d1) - Math.sin(d1 * Math.PI) * 50; }
+    const drop1 = eout(seg(t, 1.85, 2.15));
+    const lift1 = t > .75 ? 1 : 0;
+    set(f1, (cx - fx1) * (t > .9 ? 1 : 0), (cy - fy1) * (t > .9 ? 1 : 0),
+        lerp(1 + .08 * lift1, .3, drop1), 1 - drop1 * (t > 1.85 ? 1 : 0), t > .9 && t < 1.85 ? -6 : 0);
+    if (t > 2.15) f1.style.opacity = t > 6.4 ? 1 : 0;
+    dl.style.opacity = eout(seg(t, 2.1, 2.4)) * (1 - seg(t, 3.4, 3.7));
+    dl.style.transform = `translateY(${lerp(10, 0, eout(seg(t, 2.1, 2.4)))}px)`;
+    dlOk.style.transform = `scale(${back(seg(t, 2.35, 2.65))})`;
+    // drag 2: apk -> phone
+    if (t > 2.6) { const k = eio(seg(t, 2.6, 3.1)); cx = lerp(px, fx2, k); cy = lerp(py, fy2, k); }
+    const d2 = eio(seg(t, 3.3, 4.2));
+    if (t > 3.3) { cx = lerp(fx2, px, d2); cy = lerp(fy2, py, d2) - Math.sin(d2 * Math.PI) * 50; }
+    const drop2 = eout(seg(t, 4.25, 4.55));
+    set(f2, (cx - fx2) * (t > 3.3 ? 1 : 0), (cy - fy2) * (t > 3.3 ? 1 : 0),
+        lerp(t > 3.15 ? 1.08 : 1, .3, drop2), 1 - drop2 * (t > 4.25 ? 1 : 0), t > 3.3 && t < 4.25 ? -6 : 0);
+    if (t > 4.55) f2.style.opacity = t > 6.4 ? 1 : 0;
+    ring.style.opacity = eout(seg(t, 4.4, 4.6)) * (1 - seg(t, 5.7, 5.95));
+    arc.setAttribute('stroke-dashoffset', 289 * (1 - eio(seg(t, 4.55, 5.6))));
+    pk.style.opacity = eout(seg(t, 4.4, 4.6));
+    // done: the new app moves into the free grid slot (row 3, column 1)
+    const mv = eio(seg(t, 5.7, 6.15));
+    const gx = 22 - 100, gy = 184 - 280;
+    pk.style.transform = `translate(${gx * mv}px,${gy * mv}px) scale(${lerp(.8, 1, mv)})`;
+    okBadge.style.opacity = t > 6.1 ? 1 : 0;
+    okBadge.style.transform = `translate(${gx}px,${gy}px) scale(${back(seg(t, 6.1, 6.4))})`;
+    if (t > 4.6) { const k = eio(seg(t, 4.6, 5.3)); cx = lerp(px, 660, k); cy = lerp(py, 760, k); }
+    set(cur, cx - 3, cy - 2, (t > .75 && t < 1.85) || (t > 3.15 && t < 4.25) ? .92 : 1);
+  };
+}
+window.DUR = DUR;
+window.render = render;
+render(0);
+</script></body></html>

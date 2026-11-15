@@ -1,6 +1,7 @@
 #pragma once
 
 #include <opm/media/decoder.h>
+#include <opm/media/clip_player.h>
 #include <opm/media/phone_frame.h>
 #include <opm/media/recorder.h>
 #include <opm/media/webcam.h>
@@ -878,7 +879,16 @@ private:
     BtnRect settings_seg_lang_btns_[2];
     // First-connect tips card (mouse/keyboard, clipboard, drop files).
     bool tips_visible_ = false;
-    BtnRect tips_close_btn_, tips_ok_btn_, tips_rect_;
+    // Three short demo clips (tips/tip1-3.mp4 next to the exe) in the lower
+    // half of the phone screen, with arrows and dots to move between them.
+    BtnRect tips_close_btn_, tips_prev_btn_, tips_next_btn_, tips_rect_, tips_dot_btns_[3];
+    int tips_index_ = 0, tips_open_index_ = -1;
+    std::chrono::steady_clock::time_point tips_start_{};
+    ClipPlayer tips_player_;
+    SDL_Texture* tips_tex_ = nullptr;
+    std::vector<uint8_t> tips_rgba_;
+    MipChain tips_mip_;
+    uint64_t tips_serial_ = 0;
     void draw_tips_();
     // Settings: quick actions (screenshot, record, folder, log, stats,
     // webcam, quit), the phone row, and the Help tab.

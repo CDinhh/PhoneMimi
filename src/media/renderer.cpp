@@ -1456,7 +1456,8 @@ void Renderer::shutdown() {
     if (android_icon_tex_) { SDL_DestroyTexture(android_icon_tex_); android_icon_tex_ = nullptr; }
     if (logo_tex_) { SDL_DestroyTexture(logo_tex_); logo_tex_ = nullptr; }
     if (logo_small_) { SDL_DestroyTexture(logo_small_); logo_small_ = nullptr; }
-    for (MipChain* c : {&video_mip_, &frame_mip_}) {
+    if (tips_tex_) { SDL_DestroyTexture(tips_tex_); tips_tex_ = nullptr; }
+    for (MipChain* c : {&video_mip_, &frame_mip_, &tips_mip_}) {
         for (auto& t : c->tex) if (t) { SDL_DestroyTexture(t); t = nullptr; }
         if (c->out) { SDL_DestroyTexture(c->out); c->out = nullptr; }
     }
@@ -1872,7 +1873,16 @@ void Renderer::run() {
                     auto in = [&](const BtnRect& r) {
                         return r.w > 0 && in_rect(mx, my, r.x, r.y, r.w, r.h);
                     };
-                    if (in(tips_close_btn_) || in(tips_ok_btn_)) { tips_visible_ = false; break; }
+                    if (in(tips_close_btn_)) {
+                        tips_visible_ = false;
+                        tips_player_.close();
+                        tips_open_index_ = -1;
+                        break;
+                    }
+                    if (in(tips_prev_btn_)) { --tips_index_; break; }
+                    if (in(tips_next_btn_)) { ++tips_index_; break; }
+                    for (int i = 0; i < 3; ++i)
+                        if (in(tips_dot_btns_[i])) tips_index_ = i;
                     if (in(tips_rect_)) break;
                 }
                 // The setup guide takes every left click while open: tabs
@@ -5841,7 +5851,8 @@ void Renderer::draw_setup_guide_() {
                   150, 154, 162, alpha, panel_x + pad, cy + note_h / 2, 0, 500);
 }
 
-// First-connect tips: three cards, closed with X or "Got it". Shown once.
+// First-connect tips: three short looping demo clips in the lower half of
+// the phone screen; arrows and dots switch, X closes. Shown once.
 void Renderer::draw_tips_() {
     if (frame_dst_w_ == 0) return;
     float scale = (float)frame_dst_w_ / phone_frame_.frame_width();
@@ -5851,87 +5862,86 @@ void Renderer::draw_tips_() {
     int svh = (int)(phone_frame_.screen_height() * scale);
     int uw = ui_ref_width();
     int pad = std::max(12, uw / 16), gap = std::max(8, pad * 2 / 3);
-    int title_h = std::max(15, uw / 20), label_h = std::max(11, uw / 30);
-    int note_h = std::max(10, label_h * 4 / 5);
+    int label_h = std::max(11, uw / 30);
     int pr = std::max(14, pad);
-    int panel_w = (std::min)((int)(svw * 0.9f), (int)(uw * 1.7f));
-    int panel_x = svx + (svw - panel_w) / 2;
     const Accent& ac = accent_for(settings_.accent_color);
+    const char* const titles[3] = {tr("Mouse and keyboard"), tr("Clipboard sync"), tr("Drag and drop files")};
+    tips_index_ = (tips_index_ % 3 + 3) % 3;
 
-    struct Tip { wchar_t icon; const char* title; const char* body; };
-    const Tip tips[3] = {
-        {0xE28D, tr("Mouse and keyboard"), tr("Click and scroll like touch. Type on the PC keyboard (Ctrl+K).")},
-        {0xE224, tr("Clipboard sync"), tr("Copy on the phone or the PC, paste on the other.")},
-        {0xE32A, tr("Drag and drop files"), tr("Drop an APK to install it, other files go to Download.")},
-    };
-    const int tile = label_h * 2 + 8;
-    const int text_x0 = pad + tile + gap;
-    const int text_w = panel_w - text_x0 - pad;
-    auto wrap = [&](const std::string& text, int px, int maxw) {
-        std::vector<std::string> lines;
-        std::string cur;
-        size_t i = 0;
-        while (i <= text.size()) {
-            size_t sp = text.find(' ', i);
-            if (sp == std::string::npos) sp = text.size();
-            std::string word = text.substr(i, sp - i);
-            std::string cand = cur.empty() ? word : cur + " " + word;
-            int w = 0, h = 0;
-            measure_text_c(sdl_renderer_, cand, px, &w, &h, 500);
-            if (!cur.empty() && w > maxw) { lines.push_back(cur); cur = word; }
-            else cur = cand;
-            i = sp + 1;
-        }
-        if (!cur.empty()) lines.push_back(cur);
-        return lines;
-    };
-    const int line_h = note_h * 135 / 100;
-    std::vector<std::vector<std::string>> bodies;
-    int cards_h = 0;
-    for (auto& t : tips) {
-        bodies.push_back(wrap(t.body, note_h, text_w));
-        cards_h += std::max(tile, label_h + 4 + (int)bodies.back().size() * line_h) + gap;
-    }
-    int btn_h = label_h + 14;
-    int total_h = pad + title_h + gap + cards_h + btn_h + pad;
-    int panel_y = svy + std::max(pad, (svh - total_h) / 2);
-    tips_rect_ = {panel_x, panel_y, panel_w, total_h};
-
+    int panel_x = svx + pad / 2, panel_w = svw - pad;
+    int panel_h = svh / 2;
+    int panel_y = svy + svh - panel_h - pad / 2;
+    tips_rect_ = {panel_x, panel_y, panel_w, panel_h};
     int mx, my;
     SDL_GetMouseState(&mx, &my);
-    ui_shell_(panel_x, panel_y, panel_w, total_h, pr);
-    int cy = panel_y + pad;
-    {
-        int mid = cy + title_h / 2;
-        draw_glyph(sdl_renderer_, 0xE416, panel_x + pad + title_h / 2, mid, title_h, ac.lr, ac.lg, ac.lb, 255);
-        draw_text_mid(sdl_renderer_, tr("Tips"), title_h, 244, 246, 248, 255,
-                      panel_x + pad + title_h + gap / 2, mid, 0, 700);
-        int sz = title_h + 8;
-        tips_close_btn_ = {panel_x + panel_w - pad - sz, mid - sz / 2, sz, sz};
-        ui_round_btn_(tips_close_btn_, lucide::X,
-                      in_rect(mx, my, tips_close_btn_.x, tips_close_btn_.y, sz, sz));
+    ui_shell_(panel_x, panel_y, panel_w, panel_h, pr);
+
+    // Header: title of the clip on screen + close.
+    int hh = label_h + 14;
+    int cy = panel_y + pad * 2 / 3;
+    tips_close_btn_ = {panel_x + panel_w - pad * 2 / 3 - hh, cy, hh, hh};
+    draw_text_mid(sdl_renderer_, titles[tips_index_],
+                  fit_text_px(sdl_renderer_, titles[tips_index_], label_h + 2,
+                              tips_close_btn_.x - panel_x - pad * 2, 700),
+                  244, 246, 248, 255, panel_x + pad, cy + hh / 2, 0, 700);
+    ui_round_btn_(tips_close_btn_, lucide::X,
+                  in_rect(mx, my, tips_close_btn_.x, tips_close_btn_.y, hh, hh));
+    cy += hh + gap / 2;
+
+    // Video, arrows either side, dots under it.
+    const int dots_h = std::max(10, label_h);
+    const int as = label_h + 14;
+    int video_h = panel_y + panel_h - pad * 2 / 3 - dots_h - gap / 2 - cy;
+    int video_w = video_h * 720 / 800;
+    int max_w = panel_w - 2 * (as + pad / 2 + 6);
+    if (video_w > max_w) { video_w = max_w; video_h = video_w * 800 / 720; }
+    int vx = panel_x + (panel_w - video_w) / 2;
+
+    if (tips_open_index_ != tips_index_) {
+        char* base = SDL_GetBasePath();
+        std::string path = std::string(base ? base : "") + "tips\\tip" + std::to_string(tips_index_ + 1) + ".mp4";
+        if (base) SDL_free(base);
+        tips_player_.open(path);
+        tips_open_index_ = tips_index_;
+        tips_start_ = std::chrono::steady_clock::now();
     }
-    cy += title_h + gap;
-    for (int k = 0; k < 3; ++k) {
-        int ch = std::max(tile, label_h + 4 + (int)bodies[k].size() * line_h);
-        SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
-        SDL_SetRenderDrawColor(sdl_renderer_, ac.r, ac.g, ac.b, 42);
-        fill_round_rect(sdl_renderer_, panel_x + pad, cy, tile, tile, tile / 3);
-        draw_glyph(sdl_renderer_, tips[k].icon, panel_x + pad + tile / 2, cy + tile / 2, tile / 2,
-                   ac.lr, ac.lg, ac.lb, 255);
-        draw_text_mid(sdl_renderer_, tips[k].title,
-                      fit_text_px(sdl_renderer_, tips[k].title, label_h, text_w, 700),
-                      236, 240, 246, 255, panel_x + text_x0, cy + label_h / 2 + 1, 0, 700);
-        int ty = cy + label_h + 4;
-        for (auto& l : bodies[k]) {
-            draw_text_mid(sdl_renderer_, l, note_h, 160, 166, 178, 255, panel_x + text_x0, ty + line_h / 2, 0, 500);
-            ty += line_h;
+    double t = std::chrono::duration<double>(std::chrono::steady_clock::now() - tips_start_).count();
+    if (tips_player_.is_open() && tips_player_.frame_at(t, &tips_rgba_)) {
+        int w = tips_player_.width(), h = tips_player_.height();
+        int tw = 0, th = 0;
+        if (tips_tex_) SDL_QueryTexture(tips_tex_, nullptr, nullptr, &tw, &th);
+        if (!tips_tex_ || tw != w || th != h) {
+            if (tips_tex_) SDL_DestroyTexture(tips_tex_);
+            tips_tex_ = SDL_CreateTexture(sdl_renderer_, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, w, h);
+            if (tips_tex_) SDL_SetTextureScaleMode(tips_tex_, SDL_ScaleModeLinear);
         }
-        cy += ch + gap;
+        if (tips_tex_) SDL_UpdateTexture(tips_tex_, nullptr, tips_rgba_.data(), w * 4);
+        ++tips_serial_;
     }
-    tips_ok_btn_ = {panel_x + pad, cy, panel_w - pad * 2, btn_h};
-    ui_pill_(tips_ok_btn_, tr("Got it"), 0, true,
-             in_rect(mx, my, tips_ok_btn_.x, tips_ok_btn_.y, tips_ok_btn_.w, tips_ok_btn_.h), 255);
+    if (tips_tex_ && tips_player_.is_open()) {
+        SDL_Rect d = {vx, cy, video_w, video_h};
+        SDL_RenderCopy(sdl_renderer_,
+                       mip_for_(tips_mip_, tips_tex_, tips_player_.width(), tips_player_.height(),
+                                tips_serial_, d.w, d.h, /*supersample=*/true),
+                       nullptr, &d);
+    }
+    int ay = cy + video_h / 2 - as / 2;
+    tips_prev_btn_ = {panel_x + pad / 2, ay, as, as};
+    tips_next_btn_ = {panel_x + panel_w - pad / 2 - as, ay, as, as};
+    ui_round_btn_(tips_prev_btn_, 0xE072, in_rect(mx, my, tips_prev_btn_.x, tips_prev_btn_.y, as, as));
+    ui_round_btn_(tips_next_btn_, 0xE073, in_rect(mx, my, tips_next_btn_.x, tips_next_btn_.y, as, as));
+
+    int dot_r = std::max(3, dots_h / 3), dot_gap = dot_r * 4;
+    int dcy = cy + video_h + gap / 2 + dots_h / 2;
+    int dx0 = panel_x + panel_w / 2 - dot_gap;
+    SDL_SetRenderDrawBlendMode(sdl_renderer_, SDL_BLENDMODE_BLEND);
+    for (int i = 0; i < 3; ++i) {
+        int dcx = dx0 + i * dot_gap;
+        if (i == tips_index_) SDL_SetRenderDrawColor(sdl_renderer_, ac.lr, ac.lg, ac.lb, 255);
+        else SDL_SetRenderDrawColor(sdl_renderer_, 120, 128, 142, 255);
+        fill_circle(sdl_renderer_, dcx, dcy, i == tips_index_ ? dot_r + 1 : dot_r);
+        tips_dot_btns_[i] = {dcx - dot_gap / 2, dcy - dots_h, dot_gap, dots_h * 2};
+    }
 }
 
 void Renderer::draw_settings_panel() {

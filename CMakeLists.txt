@@ -43,6 +43,7 @@ set(MEDIA_SOURCES
     src/media/audio_output.cpp
     src/media/phone_frame.cpp
     src/media/recorder.cpp
+    src/media/clip_player.cpp
 )
 
 if(WIN32)
