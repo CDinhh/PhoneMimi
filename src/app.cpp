@@ -127,6 +127,9 @@ bool App::init(const Config& config) {
 #ifdef ENABLE_AIRPLAY
     if (config_.enable_airplay) {
         airplay_.set_video_callback([this](media::VideoFrame frame) {
+#ifdef ENABLE_MCP
+            frame_tap_.offer("iphone", frame);
+#endif
             int expected = static_cast<int>(Source::None);
             active_source_.compare_exchange_strong(expected, static_cast<int>(Source::AirPlay));
             if (active_source_.load() == static_cast<int>(Source::AirPlay))
@@ -583,6 +586,10 @@ bool App::init(const Config& config) {
     // Network failures are swallowed silently per product spec.
     renderer_.check_for_update_async(false);
 
+#ifdef ENABLE_MCP
+    mcp_init_();
+#endif
+
     running_.store(true);
     return true;
 }
@@ -603,6 +610,14 @@ void App::shutdown() {
         return;
     }
     running_.store(false);
+#ifdef ENABLE_MCP
+    // First, so no tool call reaches a half torn-down app.
+    renderer_.set_mcp_handler(nullptr);
+    {
+        std::lock_guard lk(mcp_mutex_);
+        if (mcp_) mcp_->stop();
+    }
+#endif
 
     // Close out any sessions still open (e.g. user quit mid-mirror) so the
     // usage log never ends up with a dangling session_start — handles any

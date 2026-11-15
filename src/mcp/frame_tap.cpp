@@ -50,6 +50,13 @@ bool FrameTap::get(const std::string& id, Frame* out, int wait_ms) {
     return true;
 }
 
+void FrameTap::size(const std::string& id, int* w, int* h) {
+    std::lock_guard lk(mu_);
+    auto it = slots_.find(id);
+    *w = it == slots_.end() ? 0 : it->second.frame.w;
+    *h = it == slots_.end() ? 0 : it->second.frame.h;
+}
+
 void FrameTap::drop(const std::string& id) {
     {
         std::lock_guard lk(mu_);

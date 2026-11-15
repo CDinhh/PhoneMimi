@@ -4,6 +4,7 @@
 #include <opm/media/decoder.h>
 #include <opm/media/renderer.h>
 #include <atomic>
+#include <chrono>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -23,10 +24,19 @@
 #ifdef ENABLE_ANDROID
 #include <opm/android/scrcpy_receiver.h>
 #endif
+#ifdef ENABLE_MCP
+#include <opm/mcp/frame_tap.h>
+#include <opm/mcp/mcp_host.h>
+#include <opm/mcp/mcp_server.h>
+#endif
 
 namespace opm {
 
-class App {
+class App
+#ifdef ENABLE_MCP
+    : private mcp::Host   // implemented in src/app_mcp.cpp
+#endif
+{
 public:
     App();
     ~App();
@@ -75,6 +85,11 @@ public:
     // the first USB device that is not already mirrored. Returns
     // "Mirroring <serial>" on success, otherwise a human-readable reason.
     std::string android_connect_usb();
+
+    // `adb connect <ip:port>` and mirror it. Empty `addr` retries the Wi-Fi
+    // phones mirrored earlier in this run. Returns "Mirroring <serial>" on
+    // success, otherwise why not.
+    std::string android_connect_wifi(const std::string& addr);
 
     // QR-code pairing (Wireless debugging -> "Pair device with QR code").
     // The caller shows a QR encoding `WIFI:T:ADB;S:<name>;P:<password>;;`.
@@ -159,6 +174,28 @@ private:
     void usb_watch_loop_();
     std::thread       usb_watch_thread_;
     std::atomic<bool> usb_watch_stop_{false};
+#endif
+
+#ifdef ENABLE_ANDROID
+    std::vector<std::string> wifi_history_;   // guarded by scrcpy_mutex_
+#endif
+#ifdef ENABLE_MCP
+    mcp::FrameTap frame_tap_;
+    std::unique_ptr<mcp::McpServer> mcp_;
+    std::mutex mcp_mutex_;                     // serialises start/stop
+    void mcp_init_();
+    // mcp::Host
+    std::vector<mcp::DeviceRow> devices() override;
+    bool frame(const std::string& id, mcp::Frame* out, int wait_ms) override;
+    bool send(const std::string& id, const mcp::Input& in) override;
+    int adb(const std::string& serial, const std::vector<std::string>& args,
+            std::string* out, int timeout_ms) override;
+    std::string connect_usb() override;
+    std::string connect_wifi(const std::string& addr) override;
+    media::OcrJobResult ocr(const mcp::Frame& f) override;
+    std::mutex adb_rows_mutex_;
+    std::vector<mcp::DeviceRow> adb_rows_;
+    std::chrono::steady_clock::time_point adb_rows_at_{};
 #endif
 
     std::atomic<bool> running_{false};

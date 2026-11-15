@@ -23,6 +23,8 @@ public:
     // Waits up to wait_ms for a fresh frame, then falls back to the last copy.
     bool get(const std::string& id, Frame* out, int wait_ms);
     void drop(const std::string& id);
+    // Size of the last copy (0x0 if none), without copying pixels.
+    void size(const std::string& id, int* w, int* h);
 
 private:
     struct Slot {

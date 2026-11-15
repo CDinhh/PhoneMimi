@@ -145,6 +145,12 @@ public:
     using AndroidUsbFn = std::function<std::string()>;
     void set_android_usb_handler(AndroidUsbFn fn) { android_usb_fn_ = std::move(fn); }
 
+    // MCP switch in Settings > Phone. The handler starts/stops the server
+    // (off the UI thread) and reports back with set_mcp_status().
+    using McpFn = std::function<void(bool on, int port, const std::string& token)>;
+    void set_mcp_handler(McpFn fn) { mcp_fn_ = std::move(fn); }
+    void set_mcp_status(const std::string& s) { std::lock_guard lk(mcp_status_mutex_); mcp_status_ = s; }
+
     void show_android_panel(); // open from outside if you want
 
 private:
@@ -830,6 +836,12 @@ private:
     BtnRect android_qr_cancel_btn_;            // "Cancel" in QR mode
     void android_qr_start();
     AndroidUsbFn android_usb_fn_;
+    McpFn mcp_fn_;
+    std::mutex mcp_status_mutex_;
+    std::string mcp_status_;
+    BtnRect settings_toggle_mcp_btn_;
+    BtnRect settings_mcp_copy_btn_;
+    std::chrono::steady_clock::time_point mcp_copied_at_{};
 
     // Phone input forwarding.
     AndroidInputFn android_input_fn_;

@@ -100,6 +100,9 @@ bool App::start_android_session_(const std::string& serial,
     std::string captured = serial;
     sess->receiver->set_video_callback(
         [this, captured](media::VideoFrame frame) {
+#ifdef ENABLE_MCP
+            frame_tap_.offer(captured, frame);
+#endif
             int expected = static_cast<int>(Source::None);
             if (active_source_.compare_exchange_strong(
                     expected, static_cast<int>(Source::Android))) {
@@ -164,6 +167,10 @@ bool App::start_android_session_(const std::string& serial,
         // in the background and is one click away on its source dot.
         active_android_serial_ = serial;
         scrcpy_sessions_.push_back(std::move(sess));
+        // Remember Wi-Fi phones ("ip:port") so connect_wifi can retry them.
+        if (serial.find(':') != std::string::npos &&
+            std::find(wifi_history_.begin(), wifi_history_.end(), serial) == wifi_history_.end())
+            wifi_history_.push_back(serial);
     }
     active_source_.store(static_cast<int>(Source::Android));
     UsageLog::log_session_start("Android", device_label);
@@ -395,6 +402,40 @@ void App::android_send_input(const media::Renderer::AndroidInput& in) {
     }
 }
 
+std::string App::android_connect_wifi(const std::string& addr) {
+    if (android_jar_path_.empty())
+        return "scrcpy-server.jar not found in tools/";
+    std::vector<std::string> tries;
+    {
+        std::lock_guard lk(scrcpy_mutex_);
+        if (!addr.empty()) tries.push_back(addr);
+        else tries.assign(wifi_history_.rbegin(), wifi_history_.rend());
+        for (auto& s : scrcpy_sessions_)
+            if (s && !addr.empty() && s->serial == addr) return "Mirroring " + addr + " (already)";
+    }
+    if (tries.empty())
+        return "No Wi-Fi phone connected before. Give the ip:port shown on the phone under "
+               "Developer options > Wireless debugging.";
+    std::string last;
+    for (auto& a : tries) {
+        if (a.find(':') == std::string::npos) { last = "Use ip:port, e.g. 192.168.1.50:41235."; continue; }
+        android_drop_sessions_for_ip_(a.substr(0, a.find(':')));
+        std::string m;
+        if (!adb_.connect(a, &m)) {
+            last = "Connect failed at " + a + ": " + m +
+                   " The port changes each time Wireless debugging restarts; read it again on the phone. "
+                   "A phone that was never paired must be paired first in PhoneMimi (press A).";
+            continue;
+        }
+        std::cout << "[App] Android connect (MCP): " << a << "
+";
+        std::string err;
+        if (start_android_session_(a, &err)) return "Mirroring " + a;
+        last = "Connected " + a + " but " + err;
+    }
+    return last;
+}
+
 std::string App::android_connect_usb() {
     if (android_jar_path_.empty())
         return "scrcpy-server.jar not found in tools/";
@@ -457,6 +498,9 @@ void App::android_disconnect(const std::string& serial) {
     for (auto& s : stopped) {
         if (!s) continue;
         if (s->receiver) s->receiver->stop();
+#ifdef ENABLE_MCP
+        frame_tap_.drop(s->serial);
+#endif
         adb_.disconnect(s->serial);
         std::string device_label = s->serial + (s->model.empty() ? "" : (" " + s->model));
         UsageLog::log_session_end("Android", device_label);

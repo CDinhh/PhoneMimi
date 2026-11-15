@@ -54,6 +54,12 @@ struct Settings {
     // 2 violet, 3 green, 4 pink, 5 orange).
     int accent_color = 0;
 
+    // MCP server for Claude Code (127.0.0.1 only). The token is made the
+    // first time the switch is turned on.
+    bool mcp_enabled = false;
+    int mcp_port = 47290;
+    std::string mcp_token;
+
     // Start mirroring an Android phone as soon as it is plugged in over
     // USB (debugging must already be allowed on the phone).
     bool android_auto_usb = true;

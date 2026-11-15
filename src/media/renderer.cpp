@@ -1,4 +1,7 @@
 #include <opm/media/renderer.h>
+#ifdef ENABLE_MCP
+#include <opm/mcp/mcp_protocol.h>
+#endif
 #include <opm/log_buffer.h>
 #include <opm/config.h>
 #include <opm/network/update_check.h>
@@ -1233,6 +1236,9 @@ bool Renderer::init(const std::string& title, int /*width*/, int /*height*/) {
         };
         version_lines_.push_back(make_ver(L"Version History", 40, 255, 255, 255));
         version_lines_.push_back({nullptr, 0, 0}); // spacer
+        version_lines_.push_back(make_ver(L"15.11.2026 \u2013 3.4.0", 34, 200, 200, 255));
+        version_lines_.push_back(make_desc(L"Claude Code can see and drive your phones (MCP server, Settings > Phone)"));
+        version_lines_.push_back({nullptr, 0, 0});
         version_lines_.push_back(make_ver(L"15.11.2026 \u2013 3.3.6", 34, 200, 200, 255));
         version_lines_.push_back(make_desc(L"New look: Lucide icons, accent colours, new switches, Add Android panel, penguin waiting screen"));
         version_lines_.push_back({nullptr, 0, 0});
@@ -2344,6 +2350,20 @@ void Renderer::run() {
                                 settings_panel_animating_ = true;
                                 settings_panel_anim_start_ = std::chrono::steady_clock::now();
                             }
+#ifdef ENABLE_MCP
+                            if (hit(settings_toggle_mcp_btn_)) {
+                                settings_.mcp_enabled = !settings_.mcp_enabled;
+                                if (settings_.mcp_enabled && settings_.mcp_token.empty())
+                                    settings_.mcp_token = opm::mcp::make_token();
+                                settings_.save();
+                                set_mcp_status(settings_.mcp_enabled ? "Starting..." : "");
+                                if (mcp_fn_) mcp_fn_(settings_.mcp_enabled, settings_.mcp_port, settings_.mcp_token);
+                            }
+                            if (hit(settings_mcp_copy_btn_)) {
+                                SDL_SetClipboardText(opm::mcp::setup_command(settings_.mcp_port, settings_.mcp_token).c_str());
+                                mcp_copied_at_ = std::chrono::steady_clock::now();
+                            }
+#endif
                             if (hit(settings_toggle_usb_btn_)) {
                                 settings_.android_auto_usb = !settings_.android_auto_usb;
                                 settings_.save();
@@ -5695,7 +5715,12 @@ void Renderer::draw_settings_panel() {
     settings_tab_ = std::clamp(settings_tab_, 0, 3);
     const int tab = settings_tab_;
     const bool resize_on = settings_.screenshot_resize_enabled;
-    const int rows = tab == 0 ? 4 : tab == 1 ? 8 : tab == 2 ? (resize_on ? 7 : 5) : 2;
+#ifdef ENABLE_MCP
+    const int phone_rows = settings_.mcp_enabled ? 10 : 9;
+#else
+    const int phone_rows = 8;
+#endif
+    const int rows = tab == 0 ? 4 : tab == 1 ? phone_rows : tab == 2 ? (resize_on ? 7 : 5) : 2;
     int total_h = pad + title_h + gap + tabs_h + gap + rows * row_h
                 + (tab == 1 ? gap + note_h : 0) + pad;
 
@@ -5716,6 +5741,7 @@ void Renderer::draw_settings_panel() {
     settings_fmt_mp4_btn_ = settings_fmt_gif_btn_ = {};
     settings_toggle_usb_btn_ = settings_toggle_softkbd_btn_ = {};
     settings_toggle_kbd_btn_ = settings_toggle_scroff_btn_ = settings_toggle_paste_btn_ = {};
+    settings_toggle_mcp_btn_ = settings_mcp_copy_btn_ = {};
     for (auto& b : settings_seg_res_btns_) b = {};
     for (auto& b : settings_seg_fps_btns_) b = {};
     for (auto& b : settings_seg_ios_fps_btns_) b = {};
@@ -5878,6 +5904,27 @@ void Renderer::draw_settings_panel() {
         static const int ios_vals[2] = {60, 30};
         segment("iPhone frame rate", ios_opts, 2,
                 index_of(ios_vals, 2, settings_.airplay_max_fps), settings_seg_ios_fps_btns_);
+#ifdef ENABLE_MCP
+        settings_toggle_mcp_btn_ = toggle("Claude control (MCP)", settings_.mcp_enabled);
+        if (settings_.mcp_enabled) {
+            // Server status on the left, "Copy command" on the right.
+            int y = begin_row(false);
+            std::string st;
+            {
+                std::lock_guard lk(mcp_status_mutex_);
+                st = mcp_status_;
+            }
+            bool copied = std::chrono::steady_clock::now() - mcp_copied_at_ < std::chrono::milliseconds(1500);
+            int ph = label_h + 10, pw = std::min(label_h * 8, card_w / 2);
+            BtnRect pill{card_x + card_w - inner - pw, y + (row_h - ph) / 2, pw, ph};
+            ui_pill_(pill, copied ? "Copied" : "Copy command", copied ? lucide::Check : 0, false,
+                     in_rect(mx, my, pill.x, pill.y, pill.w, pill.h), text_alpha);
+            settings_mcp_copy_btn_ = pill;
+            int avail = card_w - inner * 3 - pw;
+            text(st, fit_text_px(sdl_renderer_, st.c_str(), note_h, avail), card_x + inner,
+                 y + row_h / 2, 150, 154, 162, 0);
+        }
+#endif
         text("Applies the next time a phone connects.", note_h, card_x + inner,
              cy + rows * row_h + gap + note_h / 2, 132, 132, 142, 0);
     } else if (tab == 2) {

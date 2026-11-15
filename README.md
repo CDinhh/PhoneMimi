@@ -13,6 +13,8 @@ window. Nothing to install on the phone.
 - **Webcam drawer**: show your camera next to the phone, in recordings too.
 - Several phones can stay connected; switch between them from the dots in
   the bottom bezel.
+- **Claude Code control (MCP)**: let Claude see, read and drive your phones
+  to test the app you are building.
 
 ## Download
 
@@ -39,6 +41,32 @@ Builds are unsigned, so SmartScreen may ask you to confirm
 2. PC: press **A**. Pick the phone under *Nearby*, or type the IP, pair port
    and pairing code from **Pair device with pairing code**, then **Connect**.
    **QR code** pairs by scanning instead.
+
+## Use with Claude Code (MCP)
+
+PhoneMimi has a built-in MCP server so [Claude Code](https://claude.com/claude-code)
+can work your phone while you build an app: take screenshots, read the screen,
+tap, swipe, type, start apps, install builds and read logs.
+
+1. **Settings > Phone > Claude control (MCP)**: turn it on.
+2. Press **Copy command** and run it in a terminal. It looks like:
+   ```
+   claude mcp add --transport http phonemimi http://127.0.0.1:47290/mcp --header "Authorization: Bearer <token>"
+   ```
+3. Start Claude Code and ask it to, say, "open my app and check the login screen".
+
+The server only listens on this PC (127.0.0.1) and needs the token from the
+command. It is off until you turn it on.
+
+| Group | Tools |
+|-------|-------|
+| See and read | `list_devices`, `screenshot`, `ui_tree`, `ocr_screen`, `current_app` |
+| Control | `tap`, `long_press`, `double_tap`, `swipe`, `scroll`, `type_text`, `press_key`, `screen_power`, `wait_for` |
+| Apps and dev | `list_apps`, `launch_app`, `stop_app`, `clear_app_data`, `install_apk`, `uninstall_app`, `open_url`, `logcat`, `clear_logcat`, `push_file`, `pull_file`, `adb_shell` |
+| Connect | `connect_usb`, `connect_wifi` |
+
+Android phones can be controlled over USB or Wi-Fi. iPhones (AirPlay) are
+view-only: `screenshot` and `ocr_screen` work, input does not.
 
 ## Keyboard shortcuts
 
@@ -82,6 +110,7 @@ and an MSI.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **3.4.0** | 15.11.2026 | Claude Code can see and drive your phones: built-in MCP server (Settings > Phone). |
 | **3.3.6** | 15.11.2026 | New look: Lucide icons, Plus Jakarta Sans, six accent colours, new switches and segmented choices, redesigned Add Android panel, penguin waiting screen. |
 | **0.7.0** | 14.11.2026 | PhoneMimi: Android over USB (starts by itself), typing and pasting to the phone, phone side buttons, phone screen off, stream quality settings, tabbed Settings, no telemetry. |
 
@@ -90,7 +119,8 @@ The same list is in the app: press `V`.
 ## Privacy
 
 No telemetry. The only network request PhoneMimi makes on its own is the
-update check against this repository's GitHub releases.
+update check against this repository's GitHub releases. The MCP server, when
+you turn it on, listens on 127.0.0.1 only.
 
 ## License
 
@@ -106,6 +136,7 @@ GPL-3.0, see [LICENSE](LICENSE).
 | [scrcpy-server](https://github.com/Genymobile/scrcpy) 3.0 | Apache-2.0 | Runs on the Android phone |
 | [adb](https://developer.android.com/tools/adb) | Apache-2.0 | Talks to the Android phone |
 | [stb_image](https://github.com/nothings/stb) | MIT / Public Domain | Image decoding and encoding |
+| [nlohmann/json](https://github.com/nlohmann/json) | MIT | MCP server JSON |
 | [Lucide](https://lucide.dev/) icons | ISC | Icon font |
 | [Plus Jakarta Sans](https://github.com/tokotype/PlusJakartaSans) | OFL-1.1 | UI font |
 | Microsoft VC++ Runtime | Microsoft redistributable | C/C++ runtime |

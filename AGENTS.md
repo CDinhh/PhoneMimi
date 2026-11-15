@@ -31,6 +31,7 @@ a Release build before tagging.
 | [include/opm/](include/opm) | Public headers — namespace `opm::`, one subdir per module (`airplay/`, `android/`, `cast/`, `media/`, `miracast/`, `network/`). |
 | [src/](src) | Implementations mirror the header layout. `main.cpp` → CLI/startup; `app.cpp` → `opm::App` glues renderer + receivers. |
 | [lib/](lib) | Vendored sources: `stb_image*` and `playfair/` (AirPlay FairPlay). Do not reformat. |
+| [src/mcp/](src/mcp) | MCP server for Claude Code: `mcp_protocol` (HTTP routing, auth, JSON-RPC), `mcp_tools` (tool table over `mcp::Host`), `mcp_server` (127.0.0.1 sockets), `mcp_self_test` (`--mcp-self-test`). `src/app_mcp.cpp` is `App` as the host. |
 | [resources/](resources) | `.rc`, app manifest, icons embedded into the exe. |
 | [installer/](installer) | WiX 5 `.wxs` source + `THIRD_PARTY_LICENSES.txt`. |
 | [scripts/](scripts), [package.ps1](package.ps1) | Build + MSI/Intune packaging. |
