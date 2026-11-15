@@ -827,6 +827,7 @@ static int fit_text_px(SDL_Renderer* r, const std::string& s, int px, int max_w,
 // ---------------------------------------------------------------------------
 // Platform icon generators (128px monochrome, downscaled for crispness)
 // ---------------------------------------------------------------------------
+static std::vector<uint8_t> shrink_rgba(const uint8_t* src, int sw, int sh, int dw, int dh);
 static SDL_Texture* create_apple_icon(SDL_Renderer* renderer, int sz,
                                        uint8_t cr, uint8_t cg, uint8_t cb) {
     std::vector<uint8_t> rgba(sz * sz * 4, 0);
