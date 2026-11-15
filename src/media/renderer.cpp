@@ -879,9 +879,9 @@ static const char* tr(const char* en) {
         {"Power: use the phone", "Ngu\xE1\xBB\x93n: d\xC3\xB9ng n\xC3\xBAt tr\xC3\xAAn \xC4\x91i\xE1\xBB\x87n tho\xE1\xBA\xA1i"},
         {"Tips", "M\xE1\xBA\xB9o"},
         {"Mouse and keyboard", "Chu\xE1\xBB\x99t v\xC3\xA0 b\xC3\xA0n ph\xC3\xADm"},
-        {"Click and scroll like touch. Type on the PC keyboard (Ctrl+K).", "B\xE1\xBA\xA5m v\xC3\xA0 cu\xE1\xBB\x99n nh\xC6\xB0 ch\xE1\xBA\xA1m tay. G\xC3\xB5 b\xE1\xBA\xB1ng b\xC3\xA0n ph\xC3\xADm PC (Ctrl+K)."},
+        {"Click and scroll like touch. Type on the PC keyboard.", "B\xE1\xBA\xA5m v\xC3\xA0 cu\xE1\xBB\x99n nh\xC6\xB0 ch\xE1\xBA\xA1m tay. G\xC3\xB5 b\xE1\xBA\xB1ng b\xC3\xA0n ph\xC3\xADm PC."},
         {"Clipboard sync", "\xC4\x90\xE1\xBB\x93ng b\xE1\xBB\x99 clipboard"},
-        {"Copy on the phone or the PC, paste on the other.", "Sao ch\xC3\xA9p tr\xC3\xAAn \xC4\x91i\xE1\xBB\x87n tho\xE1\xBA\xA1i ho\xE1\xBA\xB7""c PC, d\xC3\xA1n b\xC3\xAAn kia."},
+        {"Copy content on the phone or the PC, paste it on the other.", "Sao ch\xC3\xA9p n\xE1\xBB\x99i dung tr\xC3\xAAn \xC4\x91i\xE1\xBB\x87n tho\xE1\xBA\xA1i ho\xE1\xBA\xB7""c PC, d\xC3\xA1n b\xC3\xAAn kia."},
         {"Drag and drop files", "K\xC3\xA9o th\xE1\xBA\xA3 file"},
         {"Drop any file: APKs install, others go to Download.", "Th\xE1\xBA\xA3 file b\xE1\xBA\xA5t k\xE1\xBB\xB3: APK \xC4\x91\xC6\xB0\xE1\xBB\xA3""c c\xC3\xA0i, file kh\xC3\xA1""c v\xC3\xA0o Download."},
         {"Got it", "\xC4\x90\xC3\xA3 hi\xE1\xBB\x83u"}
@@ -5893,8 +5893,8 @@ void Renderer::draw_tips_() {
     // What the clip shows, under the title (at most two lines).
     {
         const char* const descs[3] = {
-            tr("Click and scroll like touch. Type on the PC keyboard (Ctrl+K)."),
-            tr("Copy on the phone or the PC, paste on the other."),
+            tr("Click and scroll like touch. Type on the PC keyboard."),
+            tr("Copy content on the phone or the PC, paste it on the other."),
             tr("Drop any file: APKs install, others go to Download.")};
         const int note_h = std::max(10, label_h * 9 / 10);
         const int line_h = note_h * 135 / 100;

@@ -76,7 +76,7 @@ struct Settings {
 
     // Send PC typing to the phone as soon as an Android phone is mirrored
     // (same as pressing Ctrl+K).
-    bool android_keyboard_on = false;
+    bool android_keyboard_on = true;    // PC keyboard types on the phone
 
     // Send typed text by pasting it instead of as key presses. Key presses
     // go through the phone's keyboard app, which may buffer whole words.
