@@ -883,7 +883,7 @@ static const char* tr(const char* en) {
         {"Clipboard sync", "\xC4\x90\xE1\xBB\x93ng b\xE1\xBB\x99 clipboard"},
         {"Copy on the phone or the PC, paste on the other.", "Sao ch\xC3\xA9p tr\xC3\xAAn \xC4\x91i\xE1\xBB\x87n tho\xE1\xBA\xA1i ho\xE1\xBA\xB7""c PC, d\xC3\xA1n b\xC3\xAAn kia."},
         {"Drag and drop files", "K\xC3\xA9o th\xE1\xBA\xA3 file"},
-        {"Drop an APK to install it, other files go to Download.", "Th\xE1\xBA\xA3 file APK \xC4\x91\xE1\xBB\x83 c\xC3\xA0i, file kh\xC3\xA1""c v\xC3\xA0o th\xC6\xB0 m\xE1\xBB\xA5""c Download."},
+        {"Drop any file: APKs install, others go to Download.", "Th\xE1\xBA\xA3 file b\xE1\xBA\xA5t k\xE1\xBB\xB3: APK \xC4\x91\xC6\xB0\xE1\xBB\xA3""c c\xC3\xA0i, file kh\xC3\xA1""c v\xC3\xA0o Download."},
         {"Got it", "\xC4\x90\xC3\xA3 hi\xE1\xBB\x83u"}
     };
     auto it = kVi.find(en);
@@ -5887,6 +5887,38 @@ void Renderer::draw_tips_() {
     ui_round_btn_(tips_close_btn_, lucide::X,
                   in_rect(mx, my, tips_close_btn_.x, tips_close_btn_.y, hh, hh));
     cy += hh + gap / 2;
+
+    // What the clip shows, under the title (at most two lines).
+    {
+        const char* const descs[3] = {
+            tr("Click and scroll like touch. Type on the PC keyboard (Ctrl+K)."),
+            tr("Copy on the phone or the PC, paste on the other."),
+            tr("Drop any file: APKs install, others go to Download.")};
+        const int note_h = std::max(10, label_h * 9 / 10);
+        const int line_h = note_h * 135 / 100;
+        const int maxw = panel_w - pad * 2;
+        std::vector<std::string> lines;
+        std::string cur, text = descs[tips_index_];
+        size_t i = 0;
+        while (i <= text.size()) {
+            size_t sp = text.find(' ', i);
+            if (sp == std::string::npos) sp = text.size();
+            std::string word = text.substr(i, sp - i);
+            std::string cand = cur.empty() ? word : cur + " " + word;
+            int w = 0, h = 0;
+            measure_text_c(sdl_renderer_, cand, note_h, &w, &h, 500);
+            if (!cur.empty() && w > maxw) { lines.push_back(cur); cur = word; }
+            else cur = cand;
+            i = sp + 1;
+        }
+        if (!cur.empty()) lines.push_back(cur);
+        if (lines.size() > 2) lines.resize(2);
+        for (auto& l : lines) {
+            draw_text_mid(sdl_renderer_, l, note_h, 172, 178, 190, 255, panel_x + pad, cy + line_h / 2, 0, 500);
+            cy += line_h;
+        }
+        cy += gap / 2;
+    }
 
     // Video, arrows either side, dots under it.
     const int dots_h = std::max(10, label_h);
