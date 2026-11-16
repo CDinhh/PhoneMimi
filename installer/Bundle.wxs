@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  PhoneMimi-<ver>-win64-setup.exe: a WiX 5 bundle around the MSI.
+  Double-clicking an .msi always flashes msiexec's own "Windows Installer"
+  box before the wizard; the bundle shows one window and runs the MSI silently.
+  The bundle owns the Apps & Features entry (the MSI's is hidden by Burn).
+  Built by package.ps1 right after the MSI.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal">
+
+  <Bundle Name="PhoneMimi"
+          Manufacturer="CDinhh"
+          Version="$(Version)"
+          UpgradeCode="9C1E2B7A-4D3F-4E8B-A6C5-2F7D1E0B9A34"
+          IconSourceFile="resources\phonemimi.ico"
+          AboutUrl="https://github.com/CDinhh/PhoneMimi">
+
+    <BootstrapperApplication>
+      <bal:WixStandardBootstrapperApplication Theme="hyperlinkSidebarLicense"
+                                              ThemeFile="installer\setup-theme.xml"
+                                              LicenseUrl="https://github.com/CDinhh/PhoneMimi/blob/main/LICENSE"
+                                              LogoFile="installer\setup-logo.png"
+                                              LogoSideFile="installer\setup-side.png"
+                                              ShowVersion="yes"
+                                              LaunchTarget="[InstallFolder]\PhoneMimi.exe" />
+      <Payload SourceFile="resources\phonemimi.ico" Name="phonemimi.ico" />
+    </BootstrapperApplication>
+
+    <!-- Shown and editable on the Options page. -->
+    <Variable Name="InstallFolder" Type="formatted" Value="[ProgramFiles64Folder]PhoneMimi" bal:Overridable="yes" />
+
+    <Chain>
+      <MsiPackage SourceFile="$(MsiPath)">
+        <MsiProperty Name="INSTALLFOLDER" Value="[InstallFolder]" />
+        <!-- Burn caches this exe at Package Cache\{bundle id}\<name>; the MSI points its
+             Uninstall shortcuts there and adds InstallLocation to the bundle's ARP key. -->
+        <MsiProperty Name="BUNDLE_ID" Value="[WixBundleProviderKey]" />
+        <MsiProperty Name="BUNDLE_EXE" Value="[CommonAppDataFolder]Package Cache\[WixBundleProviderKey]\$(SetupName)" />
+      </MsiPackage>
+    </Chain>
+  </Bundle>
+</Wix>

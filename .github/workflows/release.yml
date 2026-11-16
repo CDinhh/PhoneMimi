@@ -96,6 +96,7 @@ jobs:
           wix --version
           wix extension add -g WixToolset.Firewall.wixext/5.0.2
           wix extension add -g WixToolset.UI.wixext/5.0.2
+          wix extension add -g WixToolset.Bal.wixext/5.0.2
           wix extension list -g
 
       - name: Build MSI
@@ -114,7 +115,7 @@ jobs:
         id: hash
         shell: pwsh
         run: |
-          $msi = "dist\PhoneMimi-${{ steps.ver.outputs.version }}.msi"
+          $msi = "dist\PhoneMimi-${{ steps.ver.outputs.version }}-win64.msi"
           $h = (Get-FileHash $msi -Algorithm SHA256).Hash
           echo "sha256=$h" >> $env:GITHUB_OUTPUT
           Write-Host "SHA256 (unsigned CI build, NOT for release): $h"
@@ -122,13 +123,20 @@ jobs:
       - name: Upload MSI artifact (unsigned, validation only)
         uses: actions/upload-artifact@v4
         with:
-          name: PhoneMimi-${{ steps.ver.outputs.version }}-msi-unsigned
-          path: dist/PhoneMimi-${{ steps.ver.outputs.version }}.msi
+          name: PhoneMimi-${{ steps.ver.outputs.version }}-win64-msi-unsigned
+          path: dist/PhoneMimi-${{ steps.ver.outputs.version }}-win64.msi
+          retention-days: 14
+
+      - name: Upload setup.exe artifact (unsigned, validation only)
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhoneMimi-${{ steps.ver.outputs.version }}-win64-setup-unsigned
+          path: dist/PhoneMimi-${{ steps.ver.outputs.version }}-win64-setup.exe
           retention-days: 14
 
       - name: Upload portable folder (unsigned)
         uses: actions/upload-artifact@v4
         with:
-          name: PhoneMimi-${{ steps.ver.outputs.version }}-portable
+          name: PhoneMimi-${{ steps.ver.outputs.version }}-win64-portable
           path: dist/stage
           retention-days: 14

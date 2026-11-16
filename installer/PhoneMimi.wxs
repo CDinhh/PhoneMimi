@@ -36,6 +36,15 @@
     <Property Id="ARPURLINFOABOUT" Value="https://github.com/CDinhh/PhoneMimi" />
     <SetProperty Id="ARPINSTALLLOCATION" Value="[INSTALLFOLDER]" After="CostFinalize" />
 
+    <!-- Passed by the setup.exe bundle (installer\Bundle.wxs), empty for a plain MSI install.
+         Bundled: Uninstall shortcuts run the cached setup.exe so the bundle entry goes too. -->
+    <Property Id="BUNDLE_ID" Secure="yes" />
+    <Property Id="BUNDLE_EXE" Secure="yes" />
+    <SetProperty Action="SetUninstallExeMsi" Id="UNINSTALL_EXE" Value="[System64Folder]msiexec.exe" After="AppSearch" Condition="NOT BUNDLE_EXE" />
+    <SetProperty Action="SetUninstallArgsMsi" Id="UNINSTALL_ARGS" Value="/x [ProductCode]" After="AppSearch" Condition="NOT BUNDLE_EXE" />
+    <SetProperty Action="SetUninstallExeBundle" Id="UNINSTALL_EXE" Value="[BUNDLE_EXE]" After="AppSearch" Condition="BUNDLE_EXE" />
+    <SetProperty Action="SetUninstallArgsBundle" Id="UNINSTALL_ARGS" Value="/uninstall" After="AppSearch" Condition="BUNDLE_EXE" />
+
     <!-- Install directories -->
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="PhoneMimi" />
@@ -94,14 +103,14 @@
                   WorkingDirectory="INSTALLFOLDER" />
         <Shortcut Id="UninstallStartMenu"
                   Name="Uninstall PhoneMimi"
-                  Target="[System64Folder]msiexec.exe"
-                  Arguments="/x [ProductCode]"
+                  Target="[UNINSTALL_EXE]"
+                  Arguments="[UNINSTALL_ARGS]"
                   Icon="AppIcon" />
         <Shortcut Id="UninstallInFolder"
                   Directory="INSTALLFOLDER"
                   Name="Uninstall PhoneMimi"
-                  Target="[System64Folder]msiexec.exe"
-                  Arguments="/x [ProductCode]"
+                  Target="[UNINSTALL_EXE]"
+                  Arguments="[UNINSTALL_ARGS]"
                   Icon="AppIcon" />
         <RemoveFolder Id="RemoveAppShortcutFolder"
                       Directory="ApplicationProgramsFolder"
@@ -124,6 +133,15 @@
                        Name="desktopShortcut"
                        Type="integer"
                        Value="1"
+                       KeyPath="yes" />
+      </Component>
+      <!-- Bundled install: give the bundle's Apps & Features entry an install path for Revo. -->
+      <Component Id="cmpBundleArpLocation" Directory="INSTALLFOLDER" Guid="5B0E7C2D-8A41-4F6E-9D3B-1C7A2E5F8B60" Condition="BUNDLE_ID">
+        <RegistryValue Root="HKLM"
+                       Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\[BUNDLE_ID]"
+                       Name="InstallLocation"
+                       Type="string"
+                       Value="[INSTALLFOLDER]"
                        KeyPath="yes" />
       </Component>
     </ComponentGroup>

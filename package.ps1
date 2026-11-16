@@ -8,7 +8,8 @@
         1. Build Release with CMake/MSBuild (skippable with -SkipBuild).
         2. Stage PhoneMimi.exe + all required runtime DLLs and assets
            into  dist\stage\.
-        3. Run WiX 5 to produce  dist\PhoneMimi-<ver>.msi.
+        3. Run WiX 5 to produce  dist\PhoneMimi-<ver>-win64.msi and
+           dist\PhoneMimi-<ver>-win64-setup.exe (bundle that runs the MSI).
         4. (Optional) sign the MSI with signtool if -SignCertThumbprint given.
         5. (Optional) wrap into .intunewin if IntuneWinAppUtil.exe is on PATH
            (or its path is provided via -IntuneWinAppUtil).
@@ -346,7 +347,7 @@ if (-not $wix) {
 # already in the global cache so we don't error on a re-add.
 $wixVersion = (& $wix.Source --version) -replace '[^\d.].*$',''
 $cachedExts = (& $wix.Source extension list -g 2>&1) -join "`n"
-foreach ($ext in @('WixToolset.Firewall.wixext', 'WixToolset.UI.wixext')) {
+foreach ($ext in @('WixToolset.Firewall.wixext', 'WixToolset.UI.wixext', 'WixToolset.Bal.wixext')) {
     if ($cachedExts -match [regex]::Escape($ext)) { continue }
     $ref = if ($wixVersion) { "$ext/$wixVersion" } else { $ext }
     $out = & $wix.Source extension add -g $ref 2>&1
@@ -357,7 +358,7 @@ foreach ($ext in @('WixToolset.Firewall.wixext', 'WixToolset.UI.wixext')) {
 
 # ---------- 6. Build the MSI ----------
 if (-not (Test-Path $dist)) { New-Item -ItemType Directory -Path $dist | Out-Null }
-$msi = Join-Path $dist "PhoneMimi-$Version.msi"
+$msi = Join-Path $dist "PhoneMimi-$Version-win64.msi"
 Write-Host "==> Building MSI: $msi" -ForegroundColor Cyan
 
 $wxs = Join-Path $installerDir 'PhoneMimi.wxs'
@@ -377,6 +378,32 @@ Invoke-Signtool $msi
 
 Write-Host ""
 Write-Host "==> MSI ready: $msi" -ForegroundColor Green
+
+# ---------- 6b. Setup.exe bundle (no msiexec "Windows Installer" flash) ----------
+$setupName = "PhoneMimi-$Version-win64-setup.exe"
+$setup = Join-Path $dist $setupName
+Write-Host "==> Building setup: $setup" -ForegroundColor Cyan
+& $wix.Source build (Join-Path $installerDir 'Bundle.wxs') `
+    -ext WixToolset.Bal.wixext `
+    -arch x64 `
+    -d "Version=$Version" `
+    -d "MsiPath=$msi" `
+    -d "SetupName=$setupName" `
+    -o $setup
+if ($LASTEXITCODE -ne 0) { throw "wix build (bundle) failed (exit $LASTEXITCODE)" }
+
+if ($script:DoSign) {
+    # Burn bundles need the engine signed separately: detach, sign, reattach, sign.
+    $engine = Join-Path $dist 'burn-engine.exe'
+    & $wix.Source burn detach $setup -engine $engine
+    if ($LASTEXITCODE -ne 0) { throw "wix burn detach failed" }
+    Invoke-Signtool $engine
+    & $wix.Source burn reattach $setup -engine $engine -o $setup
+    if ($LASTEXITCODE -ne 0) { throw "wix burn reattach failed" }
+    Remove-Item $engine -Force
+    Invoke-Signtool $setup
+}
+Write-Host "==> Setup ready: $setup" -ForegroundColor Green
 
 # ---------- 7. Optional: wrap into .intunewin ----------
 $intuneTool = $null
@@ -404,7 +431,7 @@ if ($intuneTool) {
 
     Write-Host "==> Intune package ready in: $intuneOut" -ForegroundColor Green
     Write-Host ""
-    Write-Host "    Intune install command:   msiexec /i `"PhoneMimi-$Version.msi`" /qn /l*v `"%ProgramData%\PhoneMimi_install.log`""
+    Write-Host "    Intune install command:   msiexec /i `"PhoneMimi-$Version-win64.msi`" /qn /l*v `"%ProgramData%\PhoneMimi_install.log`""
     Write-Host "    Intune uninstall command: msiexec /x {ProductCode-from-MSI} /qn"
     Write-Host "    Detection rule:           MSI product code (auto)"
     Write-Host "    Install behavior:         System"

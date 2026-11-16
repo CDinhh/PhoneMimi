@@ -106,8 +106,11 @@ a Release build before tagging.
 
 ## Packaging & release
 
-- **MSI:** `.\package.ps1` — builds Release, stages DLLs + VC++ runtime,
-  invokes WiX 5. Signs via Azure Trusted Signing with `-AzureSign` (cloud key,
+- **MSI + setup:** `.\package.ps1` — builds Release, stages DLLs + VC++ runtime,
+  invokes WiX 5 for `dist\PhoneMimi-<ver>-win64.msi`, then wraps it in the
+  Burn bundle `installer\Bundle.wxs` -> `PhoneMimi-<ver>-win64-setup.exe`
+  (no msiexec flash; the bundle owns the Apps & Features entry). Release
+  assets are all named `-win64`. Signs via Azure Trusted Signing with `-AzureSign` (cloud key,
   no local cert) or a local cert via `-SignCertThumbprint`.
   `-IntuneWinAppUtil <path>` wraps the MSI for Intune.
 - **Portable:** `.\package.ps1 -Portable` - same build + staging, then copies
