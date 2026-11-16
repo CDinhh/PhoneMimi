@@ -26,7 +26,15 @@
 
     <!-- Step-by-step wizard (Welcome, License, Folder, Install, Finish) in one window. -->
     <WixVariable Id="WixUILicenseRtf" Value="installer\License.rtf" />
+    <WixVariable Id="WixUIBannerBmp" Value="installer\banner.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="installer\dialog.bmp" />
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+
+    <!-- Apps & Features / Revo Uninstaller entry: icon, install path (for leftover scans), links. -->
+    <Icon Id="AppIcon" SourceFile="resources\phonemimi.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/CDinhh/PhoneMimi" />
+    <SetProperty Id="ARPINSTALLLOCATION" Value="[INSTALLFOLDER]" After="CostFinalize" />
 
     <!-- Install directories -->
     <StandardDirectory Id="ProgramFiles64Folder">
@@ -84,6 +92,17 @@
                   Description="Wireless screen mirroring for iOS and Android"
                   Target="[#exe.OnePhoneMirror]"
                   WorkingDirectory="INSTALLFOLDER" />
+        <Shortcut Id="UninstallStartMenu"
+                  Name="Uninstall PhoneMimi"
+                  Target="[System64Folder]msiexec.exe"
+                  Arguments="/x [ProductCode]"
+                  Icon="AppIcon" />
+        <Shortcut Id="UninstallInFolder"
+                  Directory="INSTALLFOLDER"
+                  Name="Uninstall PhoneMimi"
+                  Target="[System64Folder]msiexec.exe"
+                  Arguments="/x [ProductCode]"
+                  Icon="AppIcon" />
         <RemoveFolder Id="RemoveAppShortcutFolder"
                       Directory="ApplicationProgramsFolder"
                       On="uninstall" />
