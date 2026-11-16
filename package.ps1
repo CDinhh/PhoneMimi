@@ -347,7 +347,7 @@ if (-not $wix) {
 # already in the global cache so we don't error on a re-add.
 $wixVersion = (& $wix.Source --version) -replace '[^\d.].*$',''
 $cachedExts = (& $wix.Source extension list -g 2>&1) -join "`n"
-foreach ($ext in @('WixToolset.Firewall.wixext', 'WixToolset.UI.wixext', 'WixToolset.Bal.wixext')) {
+foreach ($ext in @('WixToolset.Firewall.wixext', 'WixToolset.UI.wixext', 'WixToolset.BootstrapperApplications.wixext')) {
     if ($cachedExts -match [regex]::Escape($ext)) { continue }
     $ref = if ($wixVersion) { "$ext/$wixVersion" } else { $ext }
     $out = & $wix.Source extension add -g $ref 2>&1
@@ -384,7 +384,7 @@ $setupName = "PhoneMimi-$Version-win64-setup.exe"
 $setup = Join-Path $dist $setupName
 Write-Host "==> Building setup: $setup" -ForegroundColor Cyan
 & $wix.Source build (Join-Path $installerDir 'Bundle.wxs') `
-    -ext WixToolset.Bal.wixext `
+    -ext WixToolset.BootstrapperApplications.wixext `
     -arch x64 `
     -d "Version=$Version" `
     -d "MsiPath=$msi" `

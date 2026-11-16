@@ -96,7 +96,7 @@ jobs:
           wix --version
           wix extension add -g WixToolset.Firewall.wixext/5.0.2
           wix extension add -g WixToolset.UI.wixext/5.0.2
-          wix extension add -g WixToolset.Bal.wixext/5.0.2
+          wix extension add -g WixToolset.BootstrapperApplications.wixext/5.0.2
           wix extension list -g
 
       - name: Build MSI
