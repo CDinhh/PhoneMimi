@@ -97,7 +97,7 @@ Settings Settings::load() {
             else if (k == "android_max_fps")              s.android_max_fps              = std::clamp(std::stoi(v), 0, 240);
             else if (k == "android_bitrate_mbps")         s.android_bitrate_mbps         = std::clamp(std::stoi(v), 1, 100);
             else if (k == "android_last_wifi")            s.android_last_wifi            = v;
-            else if (k == "language")                   s.language = std::clamp(std::stoi(v), 0, 1);
+            else if (k == "language")                     s.language = std::clamp(std::stoi(v), 0, 1);
             else if (k == "tip_drop_shown")               s.tip_drop_shown = (v == "1" || v == "true");
             else if (k == "android_mute_phone")           s.android_mute_phone = (v == "1" || v == "true");
             else if (k == "mcp_enabled")                  s.mcp_enabled = (v == "1" || v == "true");
