@@ -6904,6 +6904,14 @@ void Renderer::show_android_panel() {
     android_pin_.clear();
     if (android_qr_cancel_) android_qr_cancel_->store(true);
     android_qr_active_.store(false);
+    if (android_ip_.empty()) {
+        const std::string& last = settings_.android_last_wifi;
+        auto colon = last.rfind(':');
+        if (colon != std::string::npos && colon > 0 && colon + 1 < last.size()) {
+            android_ip_ = last.substr(0, colon);
+            android_connect_port_ = last.substr(colon + 1);
+        }
+    }
 #ifdef _WIN32
     if (android_ip_.empty()) {
         std::string pfx = local_subnet_prefix();
@@ -7743,9 +7751,19 @@ void Renderer::android_submit() {
         android_status_is_error_ = true;
     };
     if (!valid_ipv4(android_ip_))      return fail("Invalid IP address.");
-    if (android_port_.empty())          return fail("Pair port required.");
-    if (android_pin_.size() != 6)       return fail("PIN must be 6 digits.");
+    // Both pair fields empty = connect an already-paired phone directly.
+    bool connect_only = android_port_.empty() && android_pin_.empty();
+    if (connect_only) {
+        if (android_connect_port_.empty()) return fail("Connect port required.");
+    } else {
+        if (android_port_.empty())      return fail("Pair port required.");
+        if (android_pin_.size() != 6)   return fail("PIN must be 6 digits.");
+    }
     if (!android_connect_fn_)           return fail("Connect handler not wired.");
+    if (!android_connect_port_.empty()) {
+        settings_.android_last_wifi = android_ip_ + ":" + android_connect_port_;
+        settings_.save();
+    }
 
     {
         std::lock_guard lk(android_status_mutex_);
@@ -8028,8 +8046,8 @@ void Renderer::draw_android_panel() {
         field(0, tr("IP address"),   true,  android_ip_,           "192.168.1.20", left,             cy);
         field(1, tr("Connect port"), false, android_connect_port_, "46029",        left + col_w + gap, cy);
         cy += field_block + gap;
-        field(2, tr("Pair port"),    true,  android_port_,         "42379",        left,             cy);
-        field(3, tr("Pairing code"), true,  android_pin_,          "123456",       left + col_w + gap, cy);
+        field(2, tr("Pair port"),    false, android_port_,         "42379",        left,             cy);
+        field(3, tr("Pairing code"), false, android_pin_,          "123456",       left + col_w + gap, cy);
         cy += field_block + gap;
     }
 

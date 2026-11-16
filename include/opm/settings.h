@@ -91,6 +91,8 @@ struct Settings {
     int android_max_size = 0;
     int android_max_fps = 0;
     int android_bitrate_mbps = 16;
+    // Last "ip:port" typed in the Android panel (pre-fills it; empty = none).
+    std::string android_last_wifi;
     // iPhone (AirPlay): frame rate we advertise; iOS sends at most 60.
     int airplay_max_fps = 60;
 

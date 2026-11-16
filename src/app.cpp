@@ -358,6 +358,8 @@ bool App::init(const Config& config) {
         renderer_.set_android_handlers(
             [this](const std::string& ip, const std::string& port,
                    const std::string& pin, const std::string& cport) {
+                // Already-paired phone (e.g. over Tailscale): plain adb connect.
+                if (pin.empty() && port.empty()) return android_connect_wifi(ip + ":" + cport);
                 return android_pair_and_connect(ip, port, pin, cport);
             },
             [this]() {
