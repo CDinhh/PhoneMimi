@@ -14,7 +14,8 @@
           Version="$(Version)"
           UpgradeCode="9C1E2B7A-4D3F-4E8B-A6C5-2F7D1E0B9A34"
           IconSourceFile="resources\phonemimi.ico"
-          AboutUrl="https://github.com/CDinhh/PhoneMimi">
+          AboutUrl="https://github.com/CDinhh/PhoneMimi"
+          DisableSystemRestore="yes">
 
     <BootstrapperApplication>
       <bal:WixStandardBootstrapperApplication Theme="hyperlinkSidebarLicense"
