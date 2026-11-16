@@ -37,10 +37,15 @@ on reading the port, which this ROM blocks.
 - Remember the last `ip:port` typed in the panel in `settings.ini`
   (`android_last_wifi`) and pre-fill IP + Connect port with it when the
   panel opens, so reconnecting is one click.
-- No code on the phone. One-time setup (after each phone reboot):
-  `adb tcpip 5555`, then restart Shizuku. Documented in the vault note.
+- Settings > Phone > "Remote access - Enable" (added after review: users
+  must not type adb commands or know the port). For the phone on screen,
+  PhoneMimi runs `ip -4 -o addr show`, picks the Tailscale address
+  (100.64.0.0/10) or else the Wi-Fi one, runs `adb tcpip 5555`, checks
+  `adb connect ip:5555`, mirrors again and remembers `ip:5555`.
+- One-time per phone boot, done while the phone is connected (cable or
+  Wi-Fi). Nothing to install on the phone besides Tailscale. Apps that
+  ride on adbd (e.g. Shizuku) stop when adbd restarts.
 
 ## Non-goals
 - Auto-reconnect when the remote link drops (reconnect is one click).
 - iPhone/AirPlay, Cast, Miracast over Tailscale (mDNS / Wi-Fi Direct).
-- Running `adb tcpip` from inside PhoneMimi (it kills Shizuku).

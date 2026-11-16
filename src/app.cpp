@@ -373,6 +373,8 @@ bool App::init(const Config& config) {
         renderer_.set_android_input_handler(
             [this](const media::Renderer::AndroidInput& in) { android_send_input(in); });
         renderer_.set_android_usb_handler([this]() { return android_connect_usb(); });
+        renderer_.set_android_remote_handler(
+            [this](const std::string& serial) { return android_enable_remote(serial); });
         renderer_.set_android_drop_handler(
             [this](std::vector<std::string> paths) { android_drop_files(std::move(paths)); });
         usb_watch_thread_ = std::thread([this]() { usb_watch_loop_(); });

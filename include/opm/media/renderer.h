@@ -148,6 +148,9 @@ public:
     // mirroring it; returns "Mirroring <serial>" or an explanation.
     using AndroidUsbFn = std::function<std::string()>;
     void set_android_usb_handler(AndroidUsbFn fn) { android_usb_fn_ = std::move(fn); }
+    // Settings > Phone > Remote access: serial in, "Remote ready <ip:port>" or an error out.
+    using AndroidRemoteFn = std::function<std::string(const std::string& serial)>;
+    void set_android_remote_handler(AndroidRemoteFn fn) { android_remote_fn_ = std::move(fn); }
 
     // Files dropped on the window (full UTF-8 paths).
     using AndroidDropFn = std::function<void(std::vector<std::string>)>;
@@ -861,11 +864,15 @@ private:
     BtnRect android_qr_cancel_btn_;            // "Cancel" in QR mode
     void android_qr_start();
     AndroidUsbFn android_usb_fn_;
+    AndroidRemoteFn android_remote_fn_;
+    BtnRect settings_remote_btn_;
+    std::atomic<bool> android_remote_busy_{false};
     McpFn mcp_fn_;
     AndroidDropFn android_drop_fn_;
     std::vector<std::string> drop_paths_;
     std::mutex async_mutex_;
     std::string async_toast_, async_clip_;
+    std::string async_last_wifi_;         // remote address to remember, set off-thread
     bool async_clip_set_ = false;
     std::string last_synced_clip_;        // last text shared between PC and phone
     std::atomic<int> setup_hint_{0}, setup_brand_{0};
