@@ -116,6 +116,7 @@ and an MSI.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **3.6.1** | 17.11.2026 | Android panel: leave Connect port empty to use 5555, the port Remote access opens, so connecting from another PC only needs the phone's IP. |
 | **3.6.0** | 16.11.2026 | Android remote access: Settings > Phone > Remote access sets a fixed port and remembers the phone's Tailscale address, so you can mirror it from anywhere. The Android panel connects an already-paired phone by IP + port, without a pairing code. |
 | **3.5.2** | 16.11.2026 | New `win64-setup.exe` installer: one penguin window, no "Windows Installer" flash before it, Options to choose the folder, Launch button at the end. Release files are now named `-win64`. |
 | **3.5.1** | 16.11.2026 | Installer: step-by-step wizard with penguin art, choose the install folder, desktop shortcut, Uninstall shortcut, icon and install path in Apps & Features (works with Revo Uninstaller). |

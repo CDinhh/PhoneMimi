@@ -1378,6 +1378,9 @@ bool Renderer::init(const std::string& title, int /*width*/, int /*height*/) {
         };
         version_lines_.push_back(make_ver(L"Version History", 40, 255, 255, 255));
         version_lines_.push_back({nullptr, 0, 0}); // spacer
+        version_lines_.push_back(make_ver(L"17.11.2026 \u2013 3.6.1", 34, 200, 200, 255));
+        version_lines_.push_back(make_desc(L"Android panel: empty Connect port means 5555, the Remote access port"));
+        version_lines_.push_back({nullptr, 0, 0});
         version_lines_.push_back(make_ver(L"16.11.2026 \u2013 3.6.0", 34, 200, 200, 255));
         version_lines_.push_back(make_desc(L"Android remote access over Tailscale; connect a paired phone without a code"));
         version_lines_.push_back({nullptr, 0, 0});
@@ -7798,7 +7801,8 @@ void Renderer::android_submit() {
     // Both pair fields empty = connect an already-paired phone directly.
     bool connect_only = android_port_.empty() && android_pin_.empty();
     if (connect_only) {
-        if (android_connect_port_.empty()) return fail("Connect port required.");
+        // Empty = the fixed port that Settings > Remote access opens.
+        if (android_connect_port_.empty()) android_connect_port_ = "5555";
     } else {
         if (android_port_.empty())      return fail("Pair port required.");
         if (android_pin_.size() != 6)   return fail("PIN must be 6 digits.");
@@ -8088,7 +8092,7 @@ void Renderer::draw_android_panel() {
             ui_field_(fr, val, placeholder, android_focus_ == idx, text_alpha);
         };
         field(0, tr("IP address"),   true,  android_ip_,           "192.168.1.20", left,             cy);
-        field(1, tr("Connect port"), false, android_connect_port_, "46029",        left + col_w + gap, cy);
+        field(1, tr("Connect port"), false, android_connect_port_, "5555",       left + col_w + gap, cy);
         cy += field_block + gap;
         field(2, tr("Pair port"),    false, android_port_,         "42379",        left,             cy);
         field(3, tr("Pairing code"), false, android_pin_,          "123456",       left + col_w + gap, cy);
