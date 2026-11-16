@@ -24,9 +24,9 @@
 
     <MediaTemplate EmbedCab="yes" />
 
-    <!-- License (RTF, optional, used by the WixUI_Minimal dialog). -->
+    <!-- Step-by-step wizard (Welcome, License, Folder, Install, Finish) in one window. -->
     <WixVariable Id="WixUILicenseRtf" Value="installer\License.rtf" />
-    <ui:WixUI Id="WixUI_Minimal" />
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
 
     <!-- Install directories -->
     <StandardDirectory Id="ProgramFiles64Folder">
@@ -36,6 +36,8 @@
     <StandardDirectory Id="ProgramMenuFolder">
       <Directory Id="ApplicationProgramsFolder" Name="PhoneMimi" />
     </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
 
     <!-- Files. The whole staging directory is harvested via wix.exe at build time
          (see package.ps1 which runs `heat` / `harvest`), but we also list the
@@ -88,6 +90,19 @@
         <RegistryValue Root="HKCU"
                        Key="Software\PhoneMimi"
                        Name="installed"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+      </Component>
+      <Component Id="cmpDesktop" Directory="DesktopFolder" Guid="*">
+        <Shortcut Id="DesktopShortcut"
+                  Name="PhoneMimi"
+                  Description="Wireless screen mirroring for iOS and Android"
+                  Target="[#exe.OnePhoneMirror]"
+                  WorkingDirectory="INSTALLFOLDER" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\PhoneMimi"
+                       Name="desktopShortcut"
                        Type="integer"
                        Value="1"
                        KeyPath="yes" />
