@@ -91,6 +91,11 @@ public:
     // success, otherwise why not.
     std::string android_connect_wifi(const std::string& addr);
 
+    // Switch a connected phone to a fixed adb port (`adb tcpip`) and find
+    // the address it can be reached at from elsewhere (Tailscale first,
+    // then Wi-Fi). Returns "Remote ready <ip:port>" or why not.
+    std::string android_enable_remote(const std::string& serial);
+
     // Files dropped on the window (see android_dialog.cpp).
     void android_drop_files(std::vector<std::string> paths);
 

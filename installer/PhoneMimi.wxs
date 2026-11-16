@@ -34,6 +34,8 @@
     <Icon Id="AppIcon" SourceFile="resources\phonemimi.ico" />
     <Property Id="ARPPRODUCTICON" Value="AppIcon" />
     <Property Id="ARPURLINFOABOUT" Value="https://github.com/CDinhh/PhoneMimi" />
+    <!-- No System Restore point on install / uninstall. -->
+    <Property Id="MSIFASTINSTALL" Value="1" />
     <SetProperty Id="ARPINSTALLLOCATION" Value="[INSTALLFOLDER]" After="CostFinalize" />
 
     <!-- Passed by the setup.exe bundle (installer\Bundle.wxs), empty for a plain MSI install.

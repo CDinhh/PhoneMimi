@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <chrono>
 #include <iostream>
@@ -535,12 +536,60 @@ std::string App::android_connect_wifi(const std::string& addr) {
                    "A phone that was never paired must be paired first in PhoneMimi (press A).";
             continue;
         }
-        std::cout << "[App] Android connect (MCP): " << a << "\n";
+        std::cout << "[App] Android connect (Wi-Fi): " << a << "\n";
         std::string err;
         if (start_android_session_(a, &err)) return "Mirroring " + a;
         last = "Connected " + a + " but " + err;
     }
     return last;
+}
+
+// Address the phone can be reached at from another network: a Tailscale
+// address (100.64.0.0/10) first, then Wi-Fi. `ip_out` is `ip -4 -o addr show`.
+static std::string pick_remote_ip(const std::string& ip_out) {
+    std::string wifi;
+    size_t pos = 0;
+    while ((pos = ip_out.find(" inet ", pos)) != std::string::npos) {
+        pos += 6;
+        std::string ip = ip_out.substr(pos, ip_out.find_first_of("/ ", pos) - pos);
+        size_t line = ip_out.rfind('\n', pos);
+        std::string ifname = ip_out.substr(line == std::string::npos ? 0 : line + 1, 40);
+        int a = 0, b = 0;
+        if (std::sscanf(ip.c_str(), "%d.%d.", &a, &b) != 2) continue;
+        if (a == 100 && b >= 64 && b <= 127) return ip;
+        if (wifi.empty() && ifname.find("wlan") != std::string::npos) wifi = ip;
+    }
+    return wifi;
+}
+
+std::string App::android_enable_remote(const std::string& serial) {
+    constexpr int kPort = 5555;
+    std::string out;
+    adb_.run_shell(serial, "ip -4 -o addr show", &out);
+    std::string ip = pick_remote_ip(out);
+    if (ip.empty())
+        return "The phone has no Wi-Fi or Tailscale address. Turn on Tailscale on the phone and try again.";
+
+    std::string m;
+    if (adb_.run({"-s", serial, "tcpip", std::to_string(kPort)}, &m, 10000) != 0)
+        return "Could not switch the phone to remote mode: " + m;
+    // adbd restarted, so the current mirror is dead; clean it up.
+    android_disconnect(serial);
+
+    std::string addr = ip + ":" + std::to_string(kPort);
+    bool ok = false;
+    for (int i = 0; i < 10 && !ok; ++i) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        ok = adb_.connect(addr, &m);
+    }
+    if (!ok) return "Remote mode is on, but " + addr + " did not answer: " + m;
+    std::cout << "[App] Android remote ready: " << addr << "\n";
+
+    // Mirror again: over the cable if it is still plugged in, else the new address.
+    std::string err;
+    if (!is_usb_serial(serial) || !start_android_session_(serial, &err))
+        start_android_session_(addr, &err);
+    return "Remote ready " + addr;
 }
 
 std::string App::android_connect_usb() {

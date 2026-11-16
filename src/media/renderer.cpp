@@ -866,6 +866,10 @@ static const char* tr(const char* en) {
         {"Connect port", "C\xE1\xBB\x95ng k\xE1\xBA\xBFt n\xE1\xBB\x91i"},
         {"Pair port", "C\xE1\xBB\x95ng gh\xC3\xA9p"},
         {"Pairing code", "M\xC3\xA3 gh\xC3\xA9p"},
+        {"Remote access", "Truy c\xE1\xBA\xADp t\xE1\xBB\xAB xa"},
+        {"Enable", "B\xE1\xBA\xADt"},
+        {"Working...", "\xC4\x90""ang x\xE1\xBB\xAD l\xC3\xBD..."},
+        {"Connect the Android phone first (USB or Wi-Fi)", "K\xE1\xBA\xBFt n\xE1\xBB\x91i \xC4\x91i\xE1\xBB\x87n tho\xE1\xBA\xA1i Android tr\xC6\xB0\xE1\xBB\x9B""c (USB ho\xE1\xBA\xB7""c Wi-Fi)"},
         {"QR code", "M\xC3\xA3 QR"},
         {"USB cable", "D\xC3\xA2y USB"},
         {"Connect", "K\xE1\xBA\xBFt n\xE1\xBB\x91i"},
@@ -1374,6 +1378,9 @@ bool Renderer::init(const std::string& title, int /*width*/, int /*height*/) {
         };
         version_lines_.push_back(make_ver(L"Version History", 40, 255, 255, 255));
         version_lines_.push_back({nullptr, 0, 0}); // spacer
+        version_lines_.push_back(make_ver(L"16.11.2026 \u2013 3.6.0", 34, 200, 200, 255));
+        version_lines_.push_back(make_desc(L"Android remote access over Tailscale; connect a paired phone without a code"));
+        version_lines_.push_back({nullptr, 0, 0});
         version_lines_.push_back(make_ver(L"16.11.2026 \u2013 3.5.2", 34, 200, 200, 255));
         version_lines_.push_back(make_desc(L"New setup.exe installer: one window, no Windows Installer flash"));
         version_lines_.push_back({nullptr, 0, 0});
@@ -2592,6 +2599,22 @@ void Renderer::run() {
                             }
                             if (hit(settings_dev_disc_btn_) && disconnect_source_fn_ && !settings_dev_id_.empty())
                                 disconnect_source_fn_(settings_dev_id_);
+                            if (hit(settings_remote_btn_) && android_remote_fn_ && !android_remote_busy_.load()) {
+                                if (settings_dev_id_.rfind("android:", 0) != 0) {
+                                    show_toast(tr("Connect the Android phone first (USB or Wi-Fi)"), 3000);
+                                } else {
+                                    android_remote_busy_ = true;
+                                    std::thread([this, fn = android_remote_fn_, serial = settings_dev_id_.substr(8)]() {
+                                        std::string r = fn(serial);
+                                        bool ok = r.rfind("Remote ready ", 0) == 0;
+                                        (ok ? std::cout : std::cerr) << "[Android] " << r << "\n";
+                                        std::lock_guard lk(async_mutex_);
+                                        async_toast_ = r;
+                                        if (ok) async_last_wifi_ = r.substr(13);
+                                        android_remote_busy_ = false;
+                                    }).detach();
+                                }
+                            }
                             if (hit(settings_help_guide_btn_)) {
                                 settings_panel_visible_ = false;
                                 settings_panel_animating_ = true;
@@ -3139,6 +3162,13 @@ void Renderer::render_frame() {
         {
             std::lock_guard lk(async_mutex_);
             toast.swap(async_toast_);
+            if (!async_last_wifi_.empty()) {
+                settings_.android_last_wifi.swap(async_last_wifi_);
+                async_last_wifi_.clear();
+                settings_.save();
+                android_ip_.clear();   // re-filled from android_last_wifi on next panel open
+                android_connect_port_.clear();
+            }
             if (async_clip_set_) { clip.swap(async_clip_); has_clip = true; async_clip_set_ = false; }
         }
         if (!toast.empty()) {
@@ -6041,9 +6071,9 @@ void Renderer::draw_settings_panel() {
     const int tab = settings_tab_;
     const bool resize_on = settings_.screenshot_resize_enabled;
 #ifdef ENABLE_MCP
-    const int phone_rows = settings_.mcp_enabled ? 11 : 10;
+    const int phone_rows = settings_.mcp_enabled ? 12 : 11;
 #else
-    const int phone_rows = 9;
+    const int phone_rows = 10;
 #endif
     // Phone: + the connected-phone row. Capture: + the two webcam rows.
     // Help: guide row, five tips, version/about row.
@@ -6073,7 +6103,7 @@ void Renderer::draw_settings_panel() {
     settings_toggle_mutephone_btn_ = {};
     for (auto& b : settings_seg_lang_btns_) b = {};
     for (auto& b : settings_action_btns_) b = {};
-    settings_dev_add_btn_ = settings_dev_disc_btn_ = {};
+    settings_dev_add_btn_ = settings_dev_disc_btn_ = settings_remote_btn_ = {};
     settings_help_guide_btn_ = settings_help_tips_btn_ = settings_help_ver_btn_ = settings_help_about_btn_ = {};
     for (auto& b : settings_seg_res_btns_) b = {};
     for (auto& b : settings_seg_fps_btns_) b = {};
@@ -6276,6 +6306,20 @@ void Renderer::draw_settings_panel() {
             text(label, fit_text_px(sdl_renderer_, label, label_h, right - card_x - inner * 2), card_x + inner,
                  y + row_h / 2, dev_name.empty() ? 150 : 230, dev_name.empty() ? 154 : 234,
                  dev_name.empty() ? 162 : 240, 0);
+        }
+        {
+            // Remote access: fixed adb port + Tailscale address, connect from anywhere later.
+            int y = begin_row(false);
+            bool busy = android_remote_busy_.load();
+            int ph = label_h + 10, pw = label_h * 6;
+            BtnRect pill{card_x + card_w - inner - pw, y + (row_h - ph) / 2, pw, ph};
+            ui_pill_(pill, busy ? tr("Working...") : tr("Enable"), lucide::Wifi, false,
+                     !busy && in_rect(mx, my, pill.x, pill.y, pill.w, pill.h), text_alpha);
+            settings_remote_btn_ = pill;
+            std::string label = tr("Remote access");
+            if (!settings_.android_last_wifi.empty()) label += "  " + settings_.android_last_wifi;
+            text(label, fit_text_px(sdl_renderer_, label, label_h, pill.x - 6 - card_x - inner * 2),
+                 card_x + inner, y + row_h / 2, 230, 234, 240, 0);
         }
         settings_toggle_usb_btn_     = toggle(tr("Auto-connect over USB"), settings_.android_auto_usb);
         settings_toggle_kbd_btn_     = toggle(tr("Type from this keyboard"), settings_.android_keyboard_on);
@@ -6904,6 +6948,14 @@ void Renderer::show_android_panel() {
     android_pin_.clear();
     if (android_qr_cancel_) android_qr_cancel_->store(true);
     android_qr_active_.store(false);
+    if (android_ip_.empty()) {
+        const std::string& last = settings_.android_last_wifi;
+        auto colon = last.rfind(':');
+        if (colon != std::string::npos && colon > 0 && colon + 1 < last.size()) {
+            android_ip_ = last.substr(0, colon);
+            android_connect_port_ = last.substr(colon + 1);
+        }
+    }
 #ifdef _WIN32
     if (android_ip_.empty()) {
         std::string pfx = local_subnet_prefix();
@@ -7743,9 +7795,19 @@ void Renderer::android_submit() {
         android_status_is_error_ = true;
     };
     if (!valid_ipv4(android_ip_))      return fail("Invalid IP address.");
-    if (android_port_.empty())          return fail("Pair port required.");
-    if (android_pin_.size() != 6)       return fail("PIN must be 6 digits.");
+    // Both pair fields empty = connect an already-paired phone directly.
+    bool connect_only = android_port_.empty() && android_pin_.empty();
+    if (connect_only) {
+        if (android_connect_port_.empty()) return fail("Connect port required.");
+    } else {
+        if (android_port_.empty())      return fail("Pair port required.");
+        if (android_pin_.size() != 6)   return fail("PIN must be 6 digits.");
+    }
     if (!android_connect_fn_)           return fail("Connect handler not wired.");
+    if (!android_connect_port_.empty()) {
+        settings_.android_last_wifi = android_ip_ + ":" + android_connect_port_;
+        settings_.save();
+    }
 
     {
         std::lock_guard lk(android_status_mutex_);
@@ -8028,8 +8090,8 @@ void Renderer::draw_android_panel() {
         field(0, tr("IP address"),   true,  android_ip_,           "192.168.1.20", left,             cy);
         field(1, tr("Connect port"), false, android_connect_port_, "46029",        left + col_w + gap, cy);
         cy += field_block + gap;
-        field(2, tr("Pair port"),    true,  android_port_,         "42379",        left,             cy);
-        field(3, tr("Pairing code"), true,  android_pin_,          "123456",       left + col_w + gap, cy);
+        field(2, tr("Pair port"),    false, android_port_,         "42379",        left,             cy);
+        field(3, tr("Pairing code"), false, android_pin_,          "123456",       left + col_w + gap, cy);
         cy += field_block + gap;
     }
 
