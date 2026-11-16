@@ -30,10 +30,14 @@
 
     <!-- Shown and editable on the Options page. -->
     <Variable Name="InstallFolder" Type="formatted" Value="[ProgramFiles64Folder]PhoneMimi" bal:Overridable="yes" />
+    <!-- Install page checkbox, off by default; persisted so uninstall follows the same choice. -->
+    <Variable Name="CreateRestorePoint" Type="numeric" Value="0" Persisted="yes" bal:Overridable="yes" />
 
     <Chain>
       <MsiPackage SourceFile="$(MsiPath)">
         <MsiProperty Name="INSTALLFOLDER" Value="[InstallFolder]" />
+        <!-- The MSI skips restore points (MSIFASTINSTALL=1) unless the user ticked the box. -->
+        <MsiProperty Name="MSIFASTINSTALL" Value="0" Condition="CreateRestorePoint = 1" />
         <!-- Burn caches this exe at Package Cache\{bundle id}\<name>; the MSI points its
              Uninstall shortcuts there and adds InstallLocation to the bundle's ARP key. -->
         <MsiProperty Name="BUNDLE_ID" Value="[WixBundleProviderKey]" />
