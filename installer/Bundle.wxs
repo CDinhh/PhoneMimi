@@ -14,8 +14,7 @@
           Version="$(Version)"
           UpgradeCode="9C1E2B7A-4D3F-4E8B-A6C5-2F7D1E0B9A34"
           IconSourceFile="resources\phonemimi.ico"
-          AboutUrl="https://github.com/CDinhh/PhoneMimi"
-          DisableSystemRestore="yes">
+          AboutUrl="https://github.com/CDinhh/PhoneMimi">
 
     <BootstrapperApplication>
       <bal:WixStandardBootstrapperApplication Theme="hyperlinkSidebarLicense"
@@ -33,7 +32,8 @@
     <!-- Install page checkbox, off by default; persisted so uninstall follows the same choice. -->
     <Variable Name="CreateRestorePoint" Type="numeric" Value="0" Persisted="yes" bal:Overridable="yes" />
 
-    <Chain>
+    <!-- Burn makes no restore point of its own; the MSI follows the checkbox. -->
+    <Chain DisableSystemRestore="yes">
       <MsiPackage SourceFile="$(MsiPath)">
         <MsiProperty Name="INSTALLFOLDER" Value="[InstallFolder]" />
         <!-- The MSI skips restore points (MSIFASTINSTALL=1) unless the user ticked the box. -->
