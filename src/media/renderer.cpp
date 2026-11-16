@@ -1374,6 +1374,9 @@ bool Renderer::init(const std::string& title, int /*width*/, int /*height*/) {
         };
         version_lines_.push_back(make_ver(L"Version History", 40, 255, 255, 255));
         version_lines_.push_back({nullptr, 0, 0}); // spacer
+        version_lines_.push_back(make_ver(L"16.11.2026 \u2013 3.5.2", 34, 200, 200, 255));
+        version_lines_.push_back(make_desc(L"New setup.exe installer: one window, no Windows Installer flash"));
+        version_lines_.push_back({nullptr, 0, 0});
         version_lines_.push_back(make_ver(L"16.11.2026 \u2013 3.5.1", 34, 200, 200, 255));
         version_lines_.push_back(make_desc(L"Installer: step-by-step wizard, choose the folder, desktop and Uninstall shortcuts"));
         version_lines_.push_back({nullptr, 0, 0});

@@ -21,8 +21,9 @@ window. Nothing to install on the phone.
 
 ## Download
 
-Get the latest version from [Releases](https://github.com/CDinhh/PhoneMimi/releases/latest):
-the **portable zip** (unzip and run `PhoneMimi.exe`) or the **MSI** installer.
+Get the latest version from [Releases](https://github.com/CDinhh/PhoneMimi/releases/latest)
+(Windows 64-bit): the **setup** (`PhoneMimi-<ver>-win64-setup.exe`), the
+**portable zip** (unzip and run `PhoneMimi.exe`) or the **MSI** for admins / Intune.
 The same portable build is also in the [`app/`](app) folder of this repository.
 Builds are unsigned, so SmartScreen may ask you to confirm
 (*More info > Run anyway*).
@@ -115,6 +116,7 @@ and an MSI.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **3.5.2** | 16.11.2026 | New `win64-setup.exe` installer: one penguin window, no "Windows Installer" flash before it, Options to choose the folder, Launch button at the end. Release files are now named `-win64`. |
 | **3.5.1** | 16.11.2026 | Installer: step-by-step wizard with penguin art, choose the install folder, desktop shortcut, Uninstall shortcut, icon and install path in Apps & Features (works with Revo Uninstaller). |
 | **3.5.0** | 16.11.2026 | Phone sound on the PC (plays on both, or mute the phone in Settings), clipboard both ways, drop files to install APKs or send files, cable setup guide that opens when a phone is plugged in. Cleaner frame: one Settings gear; quick actions, log, statistics, webcam and a Help tab live in Settings; phone name chips only with two or more phones; Vietnamese / English UI (Settings > General > Language). A tips card on the first Android connection. Faster tooltips. |
 | **3.4.3** | 16.11.2026 | Sharper mirrored video: the phone picture is no longer shrunk too far and stretched back, and the last step takes 4 samples per pixel. |
